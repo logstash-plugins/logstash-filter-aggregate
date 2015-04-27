@@ -71,7 +71,6 @@ require "thread"
 class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 	config_name "aggregate"
-	milestone 1
 	
 	# The expression defining task ID to correlate logs.
 	# This value must uniquely identify the task in the system
@@ -161,9 +160,13 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 		filter_matched(event)
 	end
 
-	
+	# Necessary to indicate logstash to periodically call 'flush' method
+	def periodic_flush
+		true
+	end
+  
 	# This method is invoked by LogStash every 5 seconds.
-	def flush()
+	def flush(options = {})
 		# Protection against no timeout defined by logstash conf : define a default eviction instance with timeout = DEFAULT_TIMEOUT seconds
 		if (@@eviction_instance.nil?)
 			@@eviction_instance = self
