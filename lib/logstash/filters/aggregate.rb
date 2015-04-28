@@ -71,7 +71,8 @@ require "thread"
 class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 	config_name "aggregate"
-	
+	milestone 1 
+
 	# The expression defining task ID to correlate logs.
 	# This value must uniquely identify the task in the system
 	# Example value : "%{application}%{my_task_id}"
