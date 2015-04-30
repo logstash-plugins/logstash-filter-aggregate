@@ -8,16 +8,8 @@ require "thread"
 # The aim of this filter is to aggregate informations available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
 # 
-# To do that :
-# - the filter needs a "task_id" to correlate events (log lines) of a same task
-# - at the task beggining, filter creates a map, attached to task_id
-# - for each event, you can execute code using 'event' and 'map' (for instance, copy an event field to map)
-# - in the final event, you can execute a last code (for instance, add map data to final event)
-# - after the final event, the map attached to task is deleted
-# - in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
-# - if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
-
 # An example of use can be:
+#
 # * with this given data : 
 # [source,log]
 # ----------------------------------
@@ -28,7 +20,6 @@ require "thread"
 # ----------------------------------
 #
 # * you can aggregate "dao duration" with this configuration : 
-
 # [source,ruby]
 # ----------------------------------
 #     filter {
@@ -66,7 +57,26 @@ require "thread"
 #         }
 #     }
 # ----------------------------------
-
+#
+# * the final event then looks like :
+# [source,json]
+# ----------------------------------
+# {
+#         "message" => "INFO - 12345 - TASK_END - end message",
+#    "dao.duration" => 46
+# }
+# ----------------------------------
+#
+#
+# How it works :
+# - the filter needs a "task_id" to correlate events (log lines) of a same task
+# - at the task beggining, filter creates a map, attached to task_id
+# - for each event, you can execute code using 'event' and 'map' (for instance, copy an event field to map)
+# - in the final event, you can execute a last code (for instance, add map data to final event)
+# - after the final event, the map attached to task is deleted
+# - in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
+# - if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
+#
 #
 class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
@@ -79,7 +89,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 	config :task_id, :validate => :string, :required => true
 
 	# The code to execute to update map, using current event.
+	# Or on the contrary, the code to execute to update event, using current map. 
 	# You will have a 'map' variable and an 'event' variable available (that is the event itself).
+	# Example value : "map['dao.duration'] += event['duration']"
 	config :code, :validate => :string, :required => true
 
 	# Tell the filter what to do with aggregate map (default :  "create_or_update").
@@ -91,8 +103,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 	# Tell the filter that task is ended, and therefore, to delete map after code execution.
 	config :end_of_task, :validate => :boolean, :default => false
 
-	# The amount of seconds after an "end event" can be considered lost.
-	# The corresponding "map" is discarded.
+	# The amount of seconds after a task "end event" can be considered lost.
+	# The task "map" is evicted.
 	# The default value is 0, which means no timeout so no auto eviction.
 	config :timeout, :validate => :number, :required => false, :default => 0
 
