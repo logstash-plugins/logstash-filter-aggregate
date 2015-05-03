@@ -16,13 +16,13 @@ The aim of this filter is to aggregate informations available among several even
 ``` ruby
      filter {
          grok {
-             match => [ "message", "%{SPACE}%{LOGLEVEL:loglevel} - %{NOTSPACE:requestid} - %{NOTSPACE:logger} - %{GREEDYDATA:msg}(\n%{GREEDYDATA})?" ]
+             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:requestid} - %{NOTSPACE:logger} - %{GREEDYDATA:msg}" ]
          }
      
          if [logger] == "TASK_START" {
              aggregate {
                  task_id => "%{requestid}"
-                 code => "map['dao.duration'] = 0"
+                 code => "map['dao_duration'] = 0"
                  map_action => "create"
              }
          }
@@ -33,7 +33,7 @@ The aim of this filter is to aggregate informations available among several even
              }
              aggregate {
                  task_id => "%{requestid}"
-                 code => "map['dao.duration'] += event['duration']"
+                 code => "map['dao_duration'] += event['duration']"
                  map_action => "update"
              }
          }
@@ -54,7 +54,7 @@ The aim of this filter is to aggregate informations available among several even
 ``` ruby
 {
          "message" => "INFO - 12345 - TASK_END - end message",
-    "dao.duration" => 46
+    "dao_duration" => 46
 }
 ```
 
@@ -79,7 +79,7 @@ The code to execute to update map, using current event.
 Or on the contrary, the code to execute to update event, using current map.  
 You will have a 'map' variable and an 'event' variable available (that is the event itself).  
 This option is required.  
-Example value : `"map['dao.duration'] += event['duration']"`  
+Example value : `"map['dao_duration'] += event['duration']"`  
 
 - **map_action:**  
 Tell the filter what to do with aggregate map (default :  "create_or_update").  
@@ -100,7 +100,7 @@ The default value is 0, which means no timeout so no auto eviction.
 
 # Logstash Plugin
 
-This is a plugin for [Logstash](https://github.com/elasticsearch/logstash).
+This is a plugin for [Logstash](https://github.com/elastic/logstash).
 
 It is fully free and fully open source. The license is Apache 2.0, meaning you are pretty much free to use it however you want in whatever way.
 
@@ -109,7 +109,7 @@ It is fully free and fully open source. The license is Apache 2.0, meaning you a
 Logstash provides infrastructure to automatically generate documentation for this plugin. We use the asciidoc format to write documentation so any comments in the source code will be first converted into asciidoc and then into html. All plugin documentation are placed under one [central location](http://www.elasticsearch.org/guide/en/logstash/current/).
 
 - For formatting code or config example, you can use the asciidoc `[source,ruby]` directive
-- For more asciidoc formatting tips, see the excellent reference here https://github.com/elasticsearch/docs#asciidoc-guide
+- For more asciidoc formatting tips, see the excellent reference here https://github.com/elastic/docs#asciidoc-guide
 
 ## Need Help?
 
@@ -183,4 +183,4 @@ Programming is not a required skill. Whatever you've seen about open source and 
 
 It is more important to the community that you are able to contribute.
 
-For more information about contributing, see the [CONTRIBUTING](https://github.com/elasticsearch/logstash/blob/master/CONTRIBUTING.md) file.
+For more information about contributing, see the [CONTRIBUTING](https://github.com/elastic/logstash/blob/master/CONTRIBUTING.md) file.
