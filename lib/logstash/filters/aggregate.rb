@@ -8,9 +8,9 @@ require "thread"
 # The aim of this filter is to aggregate informations available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
 # 
-# An example of use can be:
+# An example of use can be:  
 #
-# * with this given data : 
+# * with this given data :  
 # [source,log]
 # ----------------------------------
 #     INFO - 12345 - TASK_START - start message
@@ -19,18 +19,18 @@ require "thread"
 #     INFO - 12345 - TASK_END - end message
 # ----------------------------------
 #
-# * you can aggregate "dao duration" with this configuration : 
+# * you can aggregate "dao duration" with this configuration :  
 # [source,ruby]
 # ----------------------------------
 #     filter {
 #         grok {
-#             match => [ "message", "%{SPACE}%{LOGLEVEL:loglevel} - %{NOTSPACE:requestid} - %{NOTSPACE:logger} - %{GREEDYDATA:msg}(\n%{GREEDYDATA})?" ]
+#             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:requestid} - %{NOTSPACE:logger} - %{GREEDYDATA:msg}" ]
 #         }
 #     
 #         if [logger] == "TASK_START" {
 #             aggregate {
 #                 task_id => "%{requestid}"
-#                 code => "map['dao.duration'] = 0"
+#                 code => "map['dao_duration'] = 0"
 #                 map_action => "create"
 #             }
 #         }
@@ -41,7 +41,7 @@ require "thread"
 #             }
 #             aggregate {
 #                 task_id => "%{requestid}"
-#                 code => "map['dao.duration'] += event['duration']"
+#                 code => "map['dao_duration'] += event['duration']"
 #                 map_action => "update"
 #             }
 #         }
@@ -58,12 +58,12 @@ require "thread"
 #     }
 # ----------------------------------
 #
-# * the final event then looks like :
+# * the final event then looks like :  
 # [source,json]
 # ----------------------------------
 # {
 #         "message" => "INFO - 12345 - TASK_END - end message",
-#    "dao.duration" => 46
+#    "dao_duration" => 46
 # }
 # ----------------------------------
 #
@@ -82,29 +82,29 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 	config_name "aggregate"
 
-	# The expression defining task ID to correlate logs.
-	# This value must uniquely identify the task in the system
-	# Example value : "%{application}%{my_task_id}"
+	# The expression defining task ID to correlate logs. +
+	# This value must uniquely identify the task in the system +
+	# Example value : "%{application}%{my_task_id}" +
 	config :task_id, :validate => :string, :required => true
 
-	# The code to execute to update map, using current event.
-	# Or on the contrary, the code to execute to update event, using current map. 
-	# You will have a 'map' variable and an 'event' variable available (that is the event itself).
-	# Example value : "map['dao.duration'] += event['duration']"
+	# The code to execute to update map, using current event. +
+	# Or on the contrary, the code to execute to update event, using current map. +
+	# You will have a 'map' variable and an 'event' variable available (that is the event itself). +
+	# Example value : "map['dao_duration'] += event['duration']" +
 	config :code, :validate => :string, :required => true
 
-	# Tell the filter what to do with aggregate map (default :  "create_or_update").
-	# create: create the map, and execute the code only if map wasn't created before
-	# update: doesn't create the map, and execute the code only if map was created before
-	# create_or_update: create the map if it wasn't created before, execute the code in all cases
+	# Tell the filter what to do with aggregate map (default :  "create_or_update"). +
+	# create: create the map, and execute the code only if map wasn't created before +
+	# update: doesn't create the map, and execute the code only if map was created before +
+	# create_or_update: create the map if it wasn't created before, execute the code in all cases +
 	config :map_action, :validate => :string, :default => "create_or_update"
 
-	# Tell the filter that task is ended, and therefore, to delete map after code execution.
+	# Tell the filter that task is ended, and therefore, to delete map after code execution.  
 	config :end_of_task, :validate => :boolean, :default => false
 
-	# The amount of seconds after a task "end event" can be considered lost.
-	# The task "map" is evicted.
-	# The default value is 0, which means no timeout so no auto eviction.
+	# The amount of seconds after a task "end event" can be considered lost. +
+	# The task "map" is evicted. +
+	# The default value is 0, which means no timeout so no auto eviction. +
 	config :timeout, :validate => :number, :required => false, :default => 0
 
 	
