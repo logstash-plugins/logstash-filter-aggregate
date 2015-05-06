@@ -10,7 +10,6 @@ Gem::Specification.new do |s|
   s.require_paths = ["lib"]
 
   # Files
-  #s.files = `git ls-files`.split($\)
   s.files = Dir['lib/**/*','spec/**/*','*.gemspec','*.md','CONTRIBUTORS','Gemfile','LICENSE']
 
   # Tests
