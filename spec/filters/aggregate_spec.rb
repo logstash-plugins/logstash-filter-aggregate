@@ -17,7 +17,7 @@ describe LogStash::Filters::Aggregate do
 		describe "and receiving an event without task_id" do
 			it "does not record it" do
 				@start_filter.filter(event())
-				insist { aggregate_maps.size } == 0
+				expect(aggregate_maps).to be_empty
 			end
 		end
 		describe "and receiving an event with task_id" do
@@ -25,10 +25,10 @@ describe LogStash::Filters::Aggregate do
 				event = start_event("requestid" => "id123")
 				@start_filter.filter(event)
 
-				insist { aggregate_maps.size } == 1
-				insist { aggregate_maps["id123"].nil? } == false
-				insist { aggregate_maps["id123"].creation_timestamp } >= event["@timestamp"]
-				insist { aggregate_maps["id123"].map["dao.duration"] } == 0
+				expect(aggregate_maps.size).to eq(1)
+				expect(aggregate_maps["id123"]).not_to be_nil
+				expect(aggregate_maps["id123"].creation_timestamp).to be >= event["@timestamp"]
+				expect(aggregate_maps["id123"].map["dao.duration"]).to eq(0)
 			end
 		end
 
@@ -45,9 +45,9 @@ describe LogStash::Filters::Aggregate do
 				second_start_event = start_event("requestid" => "id124")
 				@start_filter.filter(second_start_event)
 
-				insist { aggregate_maps.size } == 1
-				insist { aggregate_maps["id124"].creation_timestamp } < second_start_event["@timestamp"]
-				insist { aggregate_maps["id124"].map["dao.duration"] } == first_update_event["duration"]
+				expect(aggregate_maps.size).to eq(1)
+				expect(aggregate_maps["id124"].creation_timestamp).to be < second_start_event["@timestamp"]
+				expect(aggregate_maps["id124"].map["dao.duration"]).to eq(first_update_event["duration"])
 			end
 		end
 	end
@@ -59,8 +59,8 @@ describe LogStash::Filters::Aggregate do
 					end_event = end_event("requestid" => "id124")
 					@end_filter.filter(end_event)
 
-					insist { aggregate_maps.size } == 0
-					insist { end_event["dao.duration"].nil? } == true
+					expect(aggregate_maps).to be_empty
+					expect(end_event["dao.duration"]).to be_nil
 				end
 			end
 		end
@@ -72,7 +72,7 @@ describe LogStash::Filters::Aggregate do
 				@task_id_value = "id_123"
 				@start_event = start_event({"requestid" => @task_id_value})
 				@start_filter.filter(@start_event)
-				insist { aggregate_maps.size } == 1
+				expect(aggregate_maps.size).to eq(1)
 			end
 
 			describe "and receiving an end event" do
@@ -80,8 +80,8 @@ describe LogStash::Filters::Aggregate do
 					it "does nothing" do
 						end_event = end_event()
 						@end_filter.filter(end_event)
-						insist { aggregate_maps.size } == 1
-						insist { end_event["dao.duration"].nil? } == true
+						expect(aggregate_maps.size).to eq(1)
+						expect(end_event["dao.duration"]).to be_nil
 					end
 				end
 
@@ -90,22 +90,22 @@ describe LogStash::Filters::Aggregate do
 						different_id_value = @task_id_value + "_different"
 						@end_filter.filter(end_event("requestid" => different_id_value))
 
-						insist { aggregate_maps.size } == 1
-						insist { aggregate_maps[@task_id_value].nil? } == false
+						expect(aggregate_maps.size).to eq(1)
+						expect(aggregate_maps[@task_id_value]).not_to be_nil
 					end
 				end
 
 				describe "and the same id of the 'start event'" do
 					it "add 'dao.duration' field to the end event and deletes the recorded 'start event'" do
-						insist { aggregate_maps.size } == 1
+						expect(aggregate_maps.size).to eq(1)
 
 						@update_filter.filter(update_event("requestid" => @task_id_value, "duration" => 2))
 
 						end_event = end_event("requestid" => @task_id_value)
 						@end_filter.filter(end_event)
 
-						insist { aggregate_maps.size } == 0
-						insist { end_event["dao.duration"] } == 2
+						expect(aggregate_maps).to be_empty
+						expect(end_event["dao.duration"]).to eq(2)
 					end
 
 				end
@@ -116,29 +116,29 @@ describe LogStash::Filters::Aggregate do
 	context "flush call" do
 		before(:each) do
 			@end_filter.timeout = 1
-			insist { @end_filter.timeout } == 1
+			expect(@end_filter.timeout).to eq(1)
 			@task_id_value = "id_123"
 			@start_event = start_event({"requestid" => @task_id_value})
 			@start_filter.filter(@start_event)
-			insist { aggregate_maps.size } == 1
+			expect(aggregate_maps.size).to eq(1)
 		end
 
 		describe "no timeout defined in none filter" do
 			it "defines a default timeout on a default filter" do
 				LogStash::Filters::Aggregate.set_eviction_instance_nil()
-				insist { LogStash::Filters::Aggregate.eviction_instance.nil? } == true
+				expect(LogStash::Filters::Aggregate.eviction_instance).to be_nil
 				@end_filter.flush()
-				insist { LogStash::Filters::Aggregate.eviction_instance } == @end_filter
-				insist { @end_filter.timeout } == LogStash::Filters::Aggregate::DEFAULT_TIMEOUT
+				expect(LogStash::Filters::Aggregate.eviction_instance).to eq(@end_filter)
+				expect(@end_filter.timeout).to eq(LogStash::Filters::Aggregate::DEFAULT_TIMEOUT)
 			end
 		end
 
 		describe "timeout is defined on another filter" do
 			it "eviction_instance is not updated" do
-				insist { LogStash::Filters::Aggregate.eviction_instance.nil? } == false
+				expect(LogStash::Filters::Aggregate.eviction_instance).not_to be_nil
 				@start_filter.flush()
-				insist { LogStash::Filters::Aggregate.eviction_instance } != @start_filter
-				insist { LogStash::Filters::Aggregate.eviction_instance } == @end_filter
+				expect(LogStash::Filters::Aggregate.eviction_instance).not_to eq(@start_filter)
+				expect(LogStash::Filters::Aggregate.eviction_instance).to eq(@end_filter)
 			end
 		end
 
@@ -146,19 +146,19 @@ describe LogStash::Filters::Aggregate do
 			it "event is not removed" do
 				sleep(2)
 				@start_filter.flush()
-				insist { aggregate_maps.size } == 1
+				expect(aggregate_maps.size).to eq(1)
 			end
 		end
 
 		describe "timeout defined on the filter" do
 			it "event is not removed if not expired" do
 				@end_filter.flush()
-				insist { aggregate_maps.size } == 1
+				expect(aggregate_maps.size).to eq(1)
 			end
 			it "event is removed if expired" do
 				sleep(2)
 				@end_filter.flush()
-				insist { aggregate_maps.size } == 0
+				expect(aggregate_maps).to be_empty
 			end
 		end
 
