@@ -6,7 +6,7 @@ require_relative "aggregate_spec_helper"
 describe LogStash::Filters::Aggregate do
 
 	before(:each) do
-		LogStash::Filters::Aggregate.set_eviction_instance_nil()
+		set_eviction_instance(nil)
 		aggregate_maps.clear()
 		@start_filter = setup_filter({ "map_action" => "create", "code" => "map['dao.duration'] = 0" })
 		@update_filter = setup_filter({ "map_action" => "update", "code" => "map['dao.duration'] += event['duration']" })
@@ -125,20 +125,20 @@ describe LogStash::Filters::Aggregate do
 
 		describe "no timeout defined in none filter" do
 			it "defines a default timeout on a default filter" do
-				LogStash::Filters::Aggregate.set_eviction_instance_nil()
-				expect(LogStash::Filters::Aggregate.eviction_instance).to be_nil
+				set_eviction_instance(nil)
+				expect(eviction_instance).to be_nil
 				@end_filter.flush()
-				expect(LogStash::Filters::Aggregate.eviction_instance).to eq(@end_filter)
+				expect(eviction_instance).to eq(@end_filter)
 				expect(@end_filter.timeout).to eq(LogStash::Filters::Aggregate::DEFAULT_TIMEOUT)
 			end
 		end
 
 		describe "timeout is defined on another filter" do
 			it "eviction_instance is not updated" do
-				expect(LogStash::Filters::Aggregate.eviction_instance).not_to be_nil
+				expect(eviction_instance).not_to be_nil
 				@start_filter.flush()
-				expect(LogStash::Filters::Aggregate.eviction_instance).not_to eq(@start_filter)
-				expect(LogStash::Filters::Aggregate.eviction_instance).to eq(@end_filter)
+				expect(eviction_instance).not_to eq(@start_filter)
+				expect(eviction_instance).to eq(@end_filter)
 			end
 		end
 

@@ -29,13 +29,21 @@ def setup_filter(config = {})
 	return filter
 end
 
-def aggregate_maps()
-	LogStash::Filters::Aggregate.aggregate_maps
-end
-
 def filter(event)
 	@start_filter.filter(event)
 	@update_filter.filter(event)
 	@end_filter.filter(event)
+end
+
+def aggregate_maps()
+	LogStash::Filters::Aggregate.class_variable_get(:@@aggregate_maps)
+end
+
+def eviction_instance()
+	LogStash::Filters::Aggregate.class_variable_get(:@@eviction_instance)
+end
+
+def set_eviction_instance(new_value)
+	LogStash::Filters::Aggregate.class_variable_set(:@@eviction_instance, new_value)
 end
 
