@@ -203,17 +203,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 		end
 	end
 
-	# Getter/Setter methods used for the tests
-	def self.aggregate_maps
-		@@aggregate_maps
-	end
-	def self.eviction_instance
-		@@eviction_instance
-	end
-	def self.set_eviction_instance_nil
-		@@eviction_instance = nil
-	end
-
 end # class LogStash::Filters::Aggregate
 
 # Element of "aggregate_maps"
