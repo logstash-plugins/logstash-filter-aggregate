@@ -8,8 +8,8 @@ describe LogStash::Filters::Aggregate do
 	before(:each) do
 		set_eviction_instance(nil)
 		aggregate_maps.clear()
-		@start_filter = setup_filter({ "map_action" => "create", "code" => "map['dao.duration'] = 0" })
-		@update_filter = setup_filter({ "map_action" => "update", "code" => "map['dao.duration'] += event['duration']" })
+		@start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
+		@update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event['duration']" })
 		@end_filter = setup_filter({ "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5 })
 	end
 
@@ -22,32 +22,32 @@ describe LogStash::Filters::Aggregate do
 		end
 		describe "and receiving an event with task_id" do
 			it "records it" do
-				event = start_event("requestid" => "id123")
+				event = start_event("taskid" => "id123")
 				@start_filter.filter(event)
 
 				expect(aggregate_maps.size).to eq(1)
 				expect(aggregate_maps["id123"]).not_to be_nil
 				expect(aggregate_maps["id123"].creation_timestamp).to be >= event["@timestamp"]
-				expect(aggregate_maps["id123"].map["dao.duration"]).to eq(0)
+				expect(aggregate_maps["id123"].map["sql_duration"]).to eq(0)
 			end
 		end
 
 		describe "and receiving two 'start events' for the same task_id" do
 			it "keeps the first one and does nothing with the second one" do
 
-				first_start_event = start_event("requestid" => "id124")
+				first_start_event = start_event("taskid" => "id124")
 				@start_filter.filter(first_start_event)
 				
-				first_update_event = update_event("requestid" => "id124", "duration" => 2)
+				first_update_event = update_event("taskid" => "id124", "duration" => 2)
 				@update_filter.filter(first_update_event)
 				
 				sleep(1)
-				second_start_event = start_event("requestid" => "id124")
+				second_start_event = start_event("taskid" => "id124")
 				@start_filter.filter(second_start_event)
 
 				expect(aggregate_maps.size).to eq(1)
 				expect(aggregate_maps["id124"].creation_timestamp).to be < second_start_event["@timestamp"]
-				expect(aggregate_maps["id124"].map["dao.duration"]).to eq(first_update_event["duration"])
+				expect(aggregate_maps["id124"].map["sql_duration"]).to eq(first_update_event["duration"])
 			end
 		end
 	end
@@ -56,11 +56,11 @@ describe LogStash::Filters::Aggregate do
 		describe "receiving an event without a previous 'start event'" do
 			describe "but without a previous 'start event'" do
 				it "does nothing with the event" do
-					end_event = end_event("requestid" => "id124")
+					end_event = end_event("taskid" => "id124")
 					@end_filter.filter(end_event)
 
 					expect(aggregate_maps).to be_empty
-					expect(end_event["dao.duration"]).to be_nil
+					expect(end_event["sql_duration"]).to be_nil
 				end
 			end
 		end
@@ -70,7 +70,7 @@ describe LogStash::Filters::Aggregate do
 		describe "receiving a 'start event'" do
 			before(:each) do
 				@task_id_value = "id_123"
-				@start_event = start_event({"requestid" => @task_id_value})
+				@start_event = start_event({"taskid" => @task_id_value})
 				@start_filter.filter(@start_event)
 				expect(aggregate_maps.size).to eq(1)
 			end
@@ -81,14 +81,14 @@ describe LogStash::Filters::Aggregate do
 						end_event = end_event()
 						@end_filter.filter(end_event)
 						expect(aggregate_maps.size).to eq(1)
-						expect(end_event["dao.duration"]).to be_nil
+						expect(end_event["sql_duration"]).to be_nil
 					end
 				end
 
 				describe "and an id different from the one of the 'start event'" do
 					it "does nothing" do
 						different_id_value = @task_id_value + "_different"
-						@end_filter.filter(end_event("requestid" => different_id_value))
+						@end_filter.filter(end_event("taskid" => different_id_value))
 
 						expect(aggregate_maps.size).to eq(1)
 						expect(aggregate_maps[@task_id_value]).not_to be_nil
@@ -96,16 +96,16 @@ describe LogStash::Filters::Aggregate do
 				end
 
 				describe "and the same id of the 'start event'" do
-					it "add 'dao.duration' field to the end event and deletes the recorded 'start event'" do
+					it "add 'sql_duration' field to the end event and deletes the recorded 'start event'" do
 						expect(aggregate_maps.size).to eq(1)
 
-						@update_filter.filter(update_event("requestid" => @task_id_value, "duration" => 2))
+						@update_filter.filter(update_event("taskid" => @task_id_value, "duration" => 2))
 
-						end_event = end_event("requestid" => @task_id_value)
+						end_event = end_event("taskid" => @task_id_value)
 						@end_filter.filter(end_event)
 
 						expect(aggregate_maps).to be_empty
-						expect(end_event["dao.duration"]).to eq(2)
+						expect(end_event["sql_duration"]).to eq(2)
 					end
 
 				end
@@ -118,7 +118,7 @@ describe LogStash::Filters::Aggregate do
 			@end_filter.timeout = 1
 			expect(@end_filter.timeout).to eq(1)
 			@task_id_value = "id_123"
-			@start_event = start_event({"requestid" => @task_id_value})
+			@start_event = start_event({"taskid" => @task_id_value})
 			@start_filter.filter(@start_event)
 			expect(aggregate_maps.size).to eq(1)
 		end
