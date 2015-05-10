@@ -13,10 +13,10 @@ require "thread"
 # * with this given data :  
 # [source,log]
 # ----------------------------------
-#     INFO - 12345 - TASK_START - start message
-#     INFO - 12345 - DAO - MyDao.findById - 12
-#     INFO - 12345 - DAO - MyDao.findAll - 34
-#     INFO - 12345 - TASK_END - end message
+#   INFO - 12345 - TASK_START - start
+#   INFO - 12345 - SQL - sqlQuery1 - 12
+#   INFO - 12345 - SQL - sqlQuery2 - 34
+#   INFO - 12345 - TASK_END - end
 # ----------------------------------
 #
 # * you can aggregate "dao duration" with this configuration :  
@@ -24,31 +24,28 @@ require "thread"
 # ----------------------------------
 #     filter {
 #         grok {
-#             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:requestid} - %{NOTSPACE:logger} - %{GREEDYDATA:msg}" ]
+#             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{NOTSPACE:logger} - %{WORD:label}( - %{INT:duration:int})?" ]
 #         }
 #     
 #         if [logger] == "TASK_START" {
 #             aggregate {
-#                 task_id => "%{requestid}"
-#                 code => "map['dao_duration'] = 0"
+#                 task_id => "%{taskid}"
+#                 code => "map['sql_duration'] = 0"
 #                 map_action => "create"
 #             }
 #         }
 #     
-#         if [logger] == "DAO" {
-#             grok {
-#                 match => [ "msg", "%{JAVACLASS:dao_call} - %{INT:duration:int}" ]
-#             }
+#         if [logger] == "SQL" {
 #             aggregate {
-#                 task_id => "%{requestid}"
-#                 code => "map['dao_duration'] += event['duration']"
+#                 task_id => "%{taskid}"
+#                 code => "map['sql_duration'] += event['duration']"
 #                 map_action => "update"
 #             }
 #         }
 #     
 #         if [logger] == "TASK_END" {
 #             aggregate {
-#                 task_id => "%{requestid}"
+#                 task_id => "%{taskid}"
 #                 code => "event.to_hash.merge!(map)"
 #                 map_action => "update"
 #                 end_of_task => true
@@ -63,9 +60,11 @@ require "thread"
 # ----------------------------------
 # {
 #         "message" => "INFO - 12345 - TASK_END - end message",
-#    "dao_duration" => 46
+#    "sql_duration" => 46
 # }
 # ----------------------------------
+#
+# the field `sql_duration` is added and contains the sum of all sql queries durations.
 #
 #
 # How it works :
@@ -90,7 +89,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 	# The code to execute to update map, using current event. +
 	# Or on the contrary, the code to execute to update event, using current map. +
 	# You will have a 'map' variable and an 'event' variable available (that is the event itself). +
-	# Example value : "map['dao_duration'] += event['duration']" +
+	# Example value : "map['sql_duration'] += event['duration']" +
 	config :code, :validate => :string, :required => true
 
 	# Tell the filter what to do with aggregate map (default :  "create_or_update"). +
