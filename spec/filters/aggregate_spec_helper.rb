@@ -13,7 +13,7 @@ def start_event(data = {})
 end
 
 def update_event(data = {})
-	data["logger"] = "DAO"
+	data["logger"] = "SQL"
 	event(data)
 end
 
@@ -23,7 +23,7 @@ def end_event(data = {})
 end
 
 def setup_filter(config = {})
-	config["task_id"] ||= "%{requestid}"
+	config["task_id"] ||= "%{taskid}"
 	filter = LogStash::Filters::Aggregate.new(config)
 	filter.register()
 	return filter
