@@ -2,9 +2,9 @@
 
 The aim of this filter is to aggregate informations available among several events (typically log lines) belonging to a same task, and finally push aggregated information into final task event.
  
-## Example
+## Example #1
 
-* with this given data : 
+* with these given logs : 
 ```
      INFO - 12345 - TASK_START - start
      INFO - 12345 - SQL - sqlQuery1 - 12
@@ -56,6 +56,45 @@ The aim of this filter is to aggregate informations available among several even
 ```
 
 the field `sql_duration` is added and contains the sum of all sql queries durations.
+
+## Example #2
+
+* If you have the same logs than example #1, but without a start log : 
+```
+     INFO - 12345 - SQL - sqlQuery1 - 12
+     INFO - 12345 - SQL - sqlQuery2 - 34
+     INFO - 12345 - TASK_END - end
+```
+
+* you can also aggregate "sql duration" with a slightly different configuration : 
+``` ruby
+     filter {
+         grok {
+             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{NOTSPACE:logger} - %{WORD:label}( - %{INT:duration:int})?" ]
+         }
+     
+         if [logger] == "SQL" {
+             aggregate {
+                 task_id => "%{taskid}"
+                 code => "map['sql_duration'] ||= 0 ; map['sql_duration'] += event['duration']"
+             }
+         }
+     
+         if [logger] == "TASK_END" {
+             aggregate {
+                 task_id => "%{taskid}"
+                 code => "event['sql_duration'] = map['sql_duration']"
+                 end_of_task => true
+                 timeout => 120
+             }
+         }
+     }
+```
+
+* the final event is exactly the same than example #1
+* the key point is the "||=" ruby operator.  
+it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
+
 
 ## How it works
 - the filter needs a "task_id" to correlate events (log lines) of a same task
