@@ -10,7 +10,7 @@ require "thread"
 # 
 # An example of use can be:  
 #
-# * with this given data :  
+# * with these given logs :  
 # [source,log]
 # ----------------------------------
 #   INFO - 12345 - TASK_START - start
@@ -65,6 +65,45 @@ require "thread"
 # ----------------------------------
 #
 # the field `sql_duration` is added and contains the sum of all sql queries durations.
+#
+#
+# * Another example : imagine you have the same logs than example #1, but without a start log : 
+# [source,log]
+# ----------------------------------
+#   INFO - 12345 - SQL - sqlQuery1 - 12
+#   INFO - 12345 - SQL - sqlQuery2 - 34
+#   INFO - 12345 - TASK_END - end
+# ----------------------------------
+#
+# * you can also aggregate "sql duration" with a slightly different configuration : 
+# [source,ruby]
+# ----------------------------------
+#     filter {
+#         grok {
+#             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{NOTSPACE:logger} - %{WORD:label}( - %{INT:duration:int})?" ]
+#         }
+#     
+#         if [logger] == "SQL" {
+#             aggregate {
+#                 task_id => "%{taskid}"
+#                 code => "map['sql_duration'] ||= 0 ; map['sql_duration'] += event['duration']"
+#             }
+#         }
+#     
+#         if [logger] == "TASK_END" {
+#             aggregate {
+#                 task_id => "%{taskid}"
+#                 code => "event['sql_duration'] = map['sql_duration']"
+#                 end_of_task => true
+#                 timeout => 120
+#             }
+#         }
+#     }
+# ----------------------------------
+#
+# * the final event is exactly the same than example #1
+# * the key point is the "||=" ruby operator. +
+# it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 #
 #
 # How it works :
