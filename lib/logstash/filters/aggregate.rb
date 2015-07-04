@@ -46,7 +46,7 @@ require "thread"
 #         if [logger] == "TASK_END" {
 #             aggregate {
 #                 task_id => "%{taskid}"
-#                 code => "event.to_hash.merge!(map)"
+#                 code => "event['sql_duration'] = map['sql_duration']"
 #                 map_action => "update"
 #                 end_of_task => true
 #                 timeout => 120
