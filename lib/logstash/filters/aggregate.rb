@@ -8,10 +8,10 @@ require "thread"
 # The aim of this filter is to aggregate informations available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
 # 
-# An example of use can be:  
+# ==== Example #1
 #
 # * with these given logs :  
-# [source,log]
+# [source,ruby]
 # ----------------------------------
 #   INFO - 12345 - TASK_START - start
 #   INFO - 12345 - SQL - sqlQuery1 - 12
@@ -19,7 +19,7 @@ require "thread"
 #   INFO - 12345 - TASK_END - end
 # ----------------------------------
 #
-# * you can aggregate "dao duration" with this configuration :  
+# * you can aggregate "sql duration" for the whole task with this configuration :
 # [source,ruby]
 # ----------------------------------
 #     filter {
@@ -56,7 +56,7 @@ require "thread"
 # ----------------------------------
 #
 # * the final event then looks like :  
-# [source,json]
+# [source,ruby]
 # ----------------------------------
 # {
 #         "message" => "INFO - 12345 - TASK_END - end message",
@@ -66,9 +66,10 @@ require "thread"
 #
 # the field `sql_duration` is added and contains the sum of all sql queries durations.
 #
-#
-# * Another example : imagine you have the same logs than example #1, but without a start log : 
-# [source,log]
+# ==== Example #2
+# 
+# * If you have the same logs than example #1, but without a start log :
+# [source,ruby]
 # ----------------------------------
 #   INFO - 12345 - SQL - sqlQuery1 - 12
 #   INFO - 12345 - SQL - sqlQuery2 - 34
@@ -106,14 +107,14 @@ require "thread"
 # it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 #
 #
-# How it works :
-# - the filter needs a "task_id" to correlate events (log lines) of a same task
-# - at the task beggining, filter creates a map, attached to task_id
-# - for each event, you can execute code using 'event' and 'map' (for instance, copy an event field to map)
-# - in the final event, you can execute a last code (for instance, add map data to final event)
-# - after the final event, the map attached to task is deleted
-# - in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
-# - if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
+# ==== How it works
+# * the filter needs a "task_id" to correlate events (log lines) of a same task
+# * at the task beggining, filter creates a map, attached to task_id
+# * for each event, you can execute code using 'event' and 'map' (for instance, copy an event field to map)
+# * in the final event, you can execute a last code (for instance, add map data to final event)
+# * after the final event, the map attached to task is deleted
+# * in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
+# * if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
 #
 #
 class LogStash::Filters::Aggregate < LogStash::Filters::Base
