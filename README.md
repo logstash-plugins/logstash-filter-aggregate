@@ -134,3 +134,8 @@ Default value: `false`
 The amount of seconds after a task "end event" can be considered lost.  
 The task "map" is then evicted.  
 The default value is 0, which means no timeout so no auto eviction.  
+
+
+## Need Help?
+
+Need help? Try #logstash on freenode IRC or the https://discuss.elastic.co/c/logstash discussion forum.
