@@ -11,10 +11,6 @@ Logstash provides infrastructure to automatically generate documentation for thi
 - For formatting code or config example, you can use the asciidoc `[source,ruby]` directive
 - For more asciidoc formatting tips, see the excellent reference here https://github.com/elastic/docs#asciidoc-guide
 
-## Need Help?
-
-Need help? Try #logstash on freenode IRC or the https://discuss.elastic.co/c/logstash discussion forum.
-
 ## Developing
 
 ### 1. Plugin Developement and Testing
