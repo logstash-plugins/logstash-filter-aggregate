@@ -139,3 +139,8 @@ The default value is 0, which means no timeout so no auto eviction.
 ## Need Help?
 
 Need help? Try #logstash on freenode IRC or the https://discuss.elastic.co/c/logstash discussion forum.
+
+
+## Want to contribute?
+
+Read [BUILD.md](BUILD.md).
