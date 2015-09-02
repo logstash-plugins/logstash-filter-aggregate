@@ -18,7 +18,7 @@ Logstash provides infrastructure to automatically generate documentation for thi
 #### Code
 - To get started, you'll need JRuby with the Bundler gem installed.
 
-- Create a new plugin or clone and existing from the GitHub [logstash-plugins](https://github.com/logstash-plugins) organization. We also provide [example plugins](https://github.com/logstash-plugins?query=example).
+- Create a new plugin or clone an existing from the GitHub [logstash-plugins](https://github.com/logstash-plugins) organization. We also provide [example plugins](https://github.com/logstash-plugins?query=example).
 
 - Install dependencies
 ```sh
