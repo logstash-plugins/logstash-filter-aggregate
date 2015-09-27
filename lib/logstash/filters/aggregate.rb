@@ -5,7 +5,7 @@ require "logstash/namespace"
 require "thread"
 
 #
-# The aim of this filter is to aggregate informations available among several events (typically log lines) belonging to a same task,
+# The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
 # 
 # ==== Example #1
@@ -103,8 +103,7 @@ require "thread"
 # ----------------------------------
 #
 # * the final event is exactly the same than example #1
-# * the key point is the "||=" ruby operator. +
-# it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
+# * the key point is the "||=" ruby operator. It allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 #
 #
 # ==== How it works
@@ -121,29 +120,39 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 	config_name "aggregate"
 
-	# The expression defining task ID to correlate logs. +
-	# This value must uniquely identify the task in the system +
-	# Example value : "%{application}%{my_task_id}" +
+	# The expression defining task ID to correlate logs.
+	#
+	# This value must uniquely identify the task in the system.
+	#
+	# Example value : "%{application}%{my_task_id}"
 	config :task_id, :validate => :string, :required => true
 
-	# The code to execute to update map, using current event. +
-	# Or on the contrary, the code to execute to update event, using current map. +
-	# You will have a 'map' variable and an 'event' variable available (that is the event itself). +
-	# Example value : "map['sql_duration'] += event['duration']" +
+	# The code to execute to update map, using current event.
+	#
+	# Or on the contrary, the code to execute to update event, using current map.
+	#
+	# You will have a 'map' variable and an 'event' variable available (that is the event itself).
+	#
+	# Example value : "map['sql_duration'] += event['duration']"
 	config :code, :validate => :string, :required => true
 
-	# Tell the filter what to do with aggregate map (default :  "create_or_update"). +
-	# create: create the map, and execute the code only if map wasn't created before +
-	# update: doesn't create the map, and execute the code only if map was created before +
-	# create_or_update: create the map if it wasn't created before, execute the code in all cases +
+	# Tell the filter what to do with aggregate map (default :  "create_or_update").
+	#
+	# create: create the map, and execute the code only if map wasn't created before
+	#
+	# update: doesn't create the map, and execute the code only if map was created before
+	#
+	# create_or_update: create the map if it wasn't created before, execute the code in all cases
 	config :map_action, :validate => :string, :default => "create_or_update"
 
 	# Tell the filter that task is ended, and therefore, to delete map after code execution.  
 	config :end_of_task, :validate => :boolean, :default => false
 
-	# The amount of seconds after a task "end event" can be considered lost. +
-	# The task "map" is evicted. +
-	# The default value is 0, which means no timeout so no auto eviction. +
+	# The amount of seconds after a task "end event" can be considered lost.
+	#
+	# The task "map" is evicted.
+	#
+	# The default value is 0, which means no timeout so no auto eviction.
 	config :timeout, :validate => :number, :required => false, :default => 0
 
 	
