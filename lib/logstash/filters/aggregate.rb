@@ -198,7 +198,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 		task_id = event.sprintf(@task_id)
 		return if task_id.nil? || task_id.empty? || task_id == @task_id
 
+		noError = false
+
+		# protect aggregate_maps against concurrent access, using a mutex
 		@@mutex.synchronize do
+		
 			# retrieve the current aggregate map
 			aggregate_maps_element = @@aggregate_maps[task_id]
 			if (aggregate_maps_element.nil?)
@@ -211,13 +215,20 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 			map = aggregate_maps_element.map
 
 			# execute the code to read/update map and event
-			@codeblock.call(event, map)
+			begin
+				@codeblock.call(event, map)
+				noError = true
+			rescue Exception => exception
+				@logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
+				event.tag("_aggregateexception")
+			end
 			
 			# delete the map if task is ended
 			@@aggregate_maps.delete(task_id) if @end_of_task
 		end
 
-		filter_matched(event)
+		# match the filter, only if no error occurred
+		filter_matched(event) if noError
 	end
 
 	# Necessary to indicate logstash to periodically call 'flush' method
