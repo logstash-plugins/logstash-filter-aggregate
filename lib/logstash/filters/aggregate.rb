@@ -114,6 +114,7 @@ require "thread"
 # * after the final event, the map attached to task is deleted
 # * in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
 # * if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
+# * finally, if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 #
 #
 class LogStash::Filters::Aggregate < LogStash::Filters::Base
@@ -136,13 +137,13 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 	# Example value : "map['sql_duration'] += event['duration']"
 	config :code, :validate => :string, :required => true
 
-	# Tell the filter what to do with aggregate map (default :  "create_or_update").
+	# Tell the filter what to do with aggregate map.
 	#
-	# create: create the map, and execute the code only if map wasn't created before
+	# `create`: create the map, and execute the code only if map wasn't created before
 	#
-	# update: doesn't create the map, and execute the code only if map was created before
+	# `update`: doesn't create the map, and execute the code only if map was created before
 	#
-	# create_or_update: create the map if it wasn't created before, execute the code in all cases
+	# `create_or_update`: create the map if it wasn't created before, execute the code in all cases
 	config :map_action, :validate => :string, :default => "create_or_update"
 
 	# Tell the filter that task is ended, and therefore, to delete map after code execution.  
@@ -152,7 +153,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 	#
 	# The task "map" is evicted.
 	#
-	# The default value is 0, which means no timeout so no auto eviction.
+	# Default value (`0`) means no timeout so no auto eviction.
 	config :timeout, :validate => :number, :required => false, :default => 0
 
 	
