@@ -219,7 +219,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 			begin
 				@codeblock.call(event, map)
 				noError = true
-			rescue Exception => exception
+			rescue => exception
 				@logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
 				event.tag("_aggregateexception")
 			end
