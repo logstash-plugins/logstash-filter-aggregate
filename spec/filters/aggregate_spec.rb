@@ -96,7 +96,7 @@ describe LogStash::Filters::Aggregate do
 				end
 
 				describe "and the same id of the 'start event'" do
-					it "add 'sql_duration' field to the end event and deletes the recorded 'start event'" do
+					it "add 'sql_duration' field to the end event and deletes the aggregate map associated to taskid" do
 						expect(aggregate_maps.size).to eq(1)
 
 						@update_filter.filter(update_event("taskid" => @task_id_value, "duration" => 2))
@@ -110,6 +110,16 @@ describe LogStash::Filters::Aggregate do
 
 				end
 			end
+		end
+	end
+
+	context "Event which causes an exception when code call" do
+		it "intercepts exception, logs the error and tags the event with '_aggregateexception'" do
+			@start_filter = setup_filter({ "code" => "fail 'Test'" })
+			start_event = start_event("taskid" => "id124")
+			@start_filter.filter(start_event)
+
+			expect(start_event["tags"]).to eq(["_aggregateexception"])
 		end
 	end
 
