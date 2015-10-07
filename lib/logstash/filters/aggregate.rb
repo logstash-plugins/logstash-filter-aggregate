@@ -183,7 +183,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 	public
 	def filter(event)
 		# return nothing unless there's an actual filter event
-		return unless filter?(event)
+		
 
 		# define task id
 		task_id = event.sprintf(@task_id)
