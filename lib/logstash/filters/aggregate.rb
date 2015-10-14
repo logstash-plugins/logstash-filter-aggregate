@@ -192,8 +192,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 	# This method is invoked each time an event matches the filter
 	public
 	def filter(event)
-		# return nothing unless there's an actual filter event
-		
 
 		# define task id
 		task_id = event.sprintf(@task_id)
