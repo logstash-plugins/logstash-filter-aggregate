@@ -5,7 +5,7 @@ require "logstash/namespace"
 require "thread"
 
 #
-# The aim of this filter is to aggregate informations available among several events (typically log lines) belonging to a same task,
+# The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
 # 
 # ==== Example #1
@@ -103,8 +103,7 @@ require "thread"
 # ----------------------------------
 #
 # * the final event is exactly the same than example #1
-# * the key point is the "||=" ruby operator. +
-# it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
+# * the key point is the "||=" ruby operator. It allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 #
 #
 # ==== How it works
@@ -115,35 +114,46 @@ require "thread"
 # * after the final event, the map attached to task is deleted
 # * in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
 # * if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
+# * finally, if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 #
 #
 class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 	config_name "aggregate"
 
-	# The expression defining task ID to correlate logs. +
-	# This value must uniquely identify the task in the system +
-	# Example value : "%{application}%{my_task_id}" +
+	# The expression defining task ID to correlate logs.
+	#
+	# This value must uniquely identify the task in the system.
+	#
+	# Example value : "%{application}%{my_task_id}"
 	config :task_id, :validate => :string, :required => true
 
-	# The code to execute to update map, using current event. +
-	# Or on the contrary, the code to execute to update event, using current map. +
-	# You will have a 'map' variable and an 'event' variable available (that is the event itself). +
-	# Example value : "map['sql_duration'] += event['duration']" +
+	# The code to execute to update map, using current event.
+	#
+	# Or on the contrary, the code to execute to update event, using current map.
+	#
+	# You will have a 'map' variable and an 'event' variable available (that is the event itself).
+	#
+	# Example value : "map['sql_duration'] += event['duration']"
 	config :code, :validate => :string, :required => true
 
-	# Tell the filter what to do with aggregate map (default :  "create_or_update"). +
-	# create: create the map, and execute the code only if map wasn't created before +
-	# update: doesn't create the map, and execute the code only if map was created before +
-	# create_or_update: create the map if it wasn't created before, execute the code in all cases +
+	# Tell the filter what to do with aggregate map.
+	#
+	# `create`: create the map, and execute the code only if map wasn't created before
+	#
+	# `update`: doesn't create the map, and execute the code only if map was created before
+	#
+	# `create_or_update`: create the map if it wasn't created before, execute the code in all cases
 	config :map_action, :validate => :string, :default => "create_or_update"
 
 	# Tell the filter that task is ended, and therefore, to delete map after code execution.  
 	config :end_of_task, :validate => :boolean, :default => false
 
-	# The amount of seconds after a task "end event" can be considered lost. +
-	# The task "map" is evicted. +
-	# The default value is 0, which means no timeout so no auto eviction. +
+	# The amount of seconds after a task "end event" can be considered lost.
+	#
+	# The task "map" is evicted.
+	#
+	# Default value (`0`) means no timeout so no auto eviction.
 	config :timeout, :validate => :number, :required => false, :default => 0
 
 	
@@ -189,7 +199,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 		task_id = event.sprintf(@task_id)
 		return if task_id.nil? || task_id.empty? || task_id == @task_id
 
+		noError = false
+
+		# protect aggregate_maps against concurrent access, using a mutex
 		@@mutex.synchronize do
+		
 			# retrieve the current aggregate map
 			aggregate_maps_element = @@aggregate_maps[task_id]
 			if (aggregate_maps_element.nil?)
@@ -202,13 +216,20 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 			map = aggregate_maps_element.map
 
 			# execute the code to read/update map and event
-			@codeblock.call(event, map)
+			begin
+				@codeblock.call(event, map)
+				noError = true
+			rescue => exception
+				@logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
+				event.tag("_aggregateexception")
+			end
 			
 			# delete the map if task is ended
 			@@aggregate_maps.delete(task_id) if @end_of_task
 		end
 
-		filter_matched(event)
+		# match the filter, only if no error occurred
+		filter_matched(event) if noError
 	end
 
 	# Necessary to indicate logstash to periodically call 'flush' method

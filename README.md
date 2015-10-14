@@ -1,6 +1,6 @@
 # Logstash Filter Aggregate Documentation
 
-The aim of this filter is to aggregate informations available among several events (typically log lines) belonging to a same task, and finally push aggregated information into final task event.
+The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task, and finally push aggregated information into final task event.
  
 ## Example #1
 
@@ -104,6 +104,7 @@ it allows to initialize 'sql_duration' map entry to 0 only if this map entry is 
 - after the final event, the map attached to task is deleted
 - in one filter configuration, it is recommanded to define a timeout option to protect the filter against unterminated tasks. It tells the filter to delete expired maps
 - if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
+- finally, if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 
 ## Aggregate Plugin Options
 - **task_id :**  
