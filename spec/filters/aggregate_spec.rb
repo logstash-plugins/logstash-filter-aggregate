@@ -113,6 +113,14 @@ describe LogStash::Filters::Aggregate do
 		end
 	end
 
+	context "Event with integer task id" do
+		it "works as well as with a string task id" do
+			start_event = start_event("taskid" => 124)
+			@start_filter.filter(start_event)
+			expect(aggregate_maps.size).to eq(1)
+		end
+	end
+
 	context "Event which causes an exception when code call" do
 		it "intercepts exception, logs the error and tags the event with '_aggregateexception'" do
 			@start_filter = setup_filter({ "code" => "fail 'Test'" })

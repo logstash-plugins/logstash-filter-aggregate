@@ -197,7 +197,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 		# define task id
 		task_id = event.sprintf(@task_id)
-		return if task_id.nil? || task_id.empty? || task_id == @task_id
+		return if task_id.nil? || task_id == @task_id
 
 		noError = false
 
