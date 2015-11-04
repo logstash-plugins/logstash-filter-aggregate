@@ -1,3 +1,6 @@
+# v 0.1.5
+- fix issue #10 : numeric task_id is now well processed
+
 # v 0.1.4
 - fix issue #5 : when code call raises an exception, the error is logged and the event is tagged '_aggregateexception'. It avoids logstash crash.
 
