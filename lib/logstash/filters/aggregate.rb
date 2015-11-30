@@ -7,6 +7,10 @@ require "thread"
 # 
 # The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
+#
+# You should be very careful to set logstash filter workers to 1 (`-w 1` flag) for this filter to work 
+# correctly otherwise documents
+# may be processed out of sequence and unexpected results will occur.
 # 
 # ==== Example #1
 # 
