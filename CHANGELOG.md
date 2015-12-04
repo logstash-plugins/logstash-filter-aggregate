@@ -1,6 +1,3 @@
-# v 2.0.4
-- Update documentation regarding necessity of having only one filter worker
-
 # v 2.0.3
 - fix issue #10 : numeric task_id is now well processed
 
