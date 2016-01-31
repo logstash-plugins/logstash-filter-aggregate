@@ -112,6 +112,14 @@ it allows to initialize 'sql_duration' map entry to 0 only if this map entry is 
 - if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
 - finally, if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 
+## Use Cases
+- extract some cool metrics from task logs and push them into task final log event (like in example #1 and #2)
+- extract error information in any task log line, and push it in final task event (to get a final document with all error information if any)
+- extract all back-end calls as a list, and push this list in final task event (to get a task profile)
+- extract all http headers logged in several lines to push this list in final task event (complete http request info)
+- for every back-end call, collect call details available on several lines, analyse it and finally tag final back-end call log line (error, timeout, business-warning, ...)
+- Finally, task id can be any correlation id matching your need : it can be a session id, a file path, ...
+
 ## Aggregate Plugin Options
 - **task_id :**  
 The expression defining task ID to correlate logs.  
