@@ -1,3 +1,5 @@
+# 2.0.4
+  - New dependency requirements for logstash-core for the 5.0 release
 # v 2.0.3
 - fix issue #10 : numeric task_id is now well processed
 
