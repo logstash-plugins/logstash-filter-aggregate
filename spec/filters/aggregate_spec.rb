@@ -218,4 +218,30 @@ describe LogStash::Filters::Aggregate do
       end
     end
   end
+  
+  context "push_previous_map_as_event option is defined, " do 
+    describe "when a new task id is detected, " do
+      it "should push previous map as new event" do
+        push_filter = setup_filter({ "code" => "map['taskid'] = event['taskid']", "push_previous_map_as_event" => true, "timeout" => 5 })
+        push_filter.filter(event({"taskid" => "1"})) { |yield_event| fail "task 1 shouldn't have yield event" }
+        push_filter.filter(event({"taskid" => "2"})) { |yield_event| expect(yield_event["taskid"]).to eq("1") }
+        expect(aggregate_maps.size).to eq(1)
+      end
+    end
+
+    describe "when timeout happens, " do
+      it "flush method should return last map as new event" do
+        push_filter = setup_filter({ "code" => "map['taskid'] = event['taskid']", "push_previous_map_as_event" => true, "timeout" => 1 })
+        push_filter.filter(event({"taskid" => "1"}))
+        sleep(2)
+        events_to_flush = push_filter.flush()
+        expect(events_to_flush).not_to be_nil
+        expect(events_to_flush.size).to eq(1)
+        expect(events_to_flush[0]["taskid"]).to eq("1")
+        expect(aggregate_maps.size).to eq(0)
+      end
+    end
+  end
+  
+
 end

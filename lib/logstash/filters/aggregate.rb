@@ -8,9 +8,8 @@ require "thread"
 # The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
 #
-# You should be very careful to set logstash filter workers to 1 (`-w 1` flag) for this filter to work 
-# correctly otherwise documents
-# may be processed out of sequence and unexpected results will occur.
+# You should be very careful to set logstash filter workers to 1 (`-w 1` flag) for this filter to work correctly 
+# otherwise events may be processed out of sequence and unexpected results will occur.
 # 
 # ==== Example #1
 # 
@@ -110,6 +109,52 @@ require "thread"
 # * the key point is the "||=" ruby operator. It allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 #
 #
+# ==== Example #3
+# 
+# Third use case : you have no specific start event and no specific end event.  
+# * A typical case is aggregating results from jdbc input plugin.  
+# * Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
+# * Using jdbc input plugin, you get these 3 events from :
+# [source,json]
+# ----------------------------------
+#   { "country_name": "France", "town_name": "Paris" }
+#   { "country_name": "France", "town_name": "Marseille" }
+#   { "country_name": "USA", "town_name": "New-York" }
+# ----------------------------------
+# * And you would like these 2 result events to push them into elasticsearch :
+# [source,json]
+# ----------------------------------
+#   { "country_name": "France", "town_name": [ "Paris", "Marseille" ] }
+#   { "country_name": "USA", "town_name": [ "New-York" ] }
+# ----------------------------------
+# * You can do that using `push_previous_map_as_event` aggregate plugin option :
+# [source,ruby]
+# ----------------------------------
+#      filter {
+#      aggregate {
+#          task_id => "%{country_name}"
+#          code => "
+#           map['tags'] ||= ['aggregated']
+#           map['town_name'] ||= []
+#           event.to_hash.each do |key,value|
+#             map[key] = value unless map.has_key?(key)
+#             map[key] << value if map[key].is_a?(Array)
+#           end
+#          "
+#          push_previous_map_as_event => true
+#          timeout => 5
+#      }
+# 
+#      if "aggregated" not in [tags] {
+#       drop {}
+#      }
+#    }
+# ----------------------------------
+# * The key point is that, each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
+# * When 5s timeout comes, the last aggregate map is pushed as a new event
+# * Finally, initial events (which are not aggregated) are dropped because useless
+# 
+# 
 # ==== How it works
 # * the filter needs a "task_id" to correlate events (log lines) of a same task
 # * at the task beggining, filter creates a map, attached to task_id
@@ -123,7 +168,7 @@ require "thread"
 #
 # ==== Use Cases
 # * extract some cool metrics from task logs and push them into task final log event (like in example #1 and #2)
-# * extract error information in any task log line, and push it in final task event (to get a final document with all error information if any)
+# * extract error information in any task log line, and push it in final task event (to get a final event with all error information if any)
 # * extract all back-end calls as a list, and push this list in final task event (to get a task profile)
 # * extract all http headers logged in several lines to push this list in final task event (complete http request info)
 # * for every back-end call, collect call details available on several lines, analyse it and finally tag final back-end call log line (error, timeout, business-warning, ...)
@@ -177,6 +222,12 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # Example value : `"/path/to/.aggregate_maps"`
   config :aggregate_maps_path, :validate => :string, :required => false
+  
+  # When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
+  # and then creates a new empty map for the next task.
+  # 
+  # WARNING: this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...
+  config :push_previous_map_as_event, :validate => :boolean, :required => false, :default => false
   
   
   # Default timeout (in seconds) when not defined in plugin configuration
@@ -258,14 +309,22 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     return if task_id.nil? || task_id == @task_id
 
     noError = false
+    event_to_yield = nil
 
     # protect aggregate_maps against concurrent access, using a mutex
     @@mutex.synchronize do
     
       # retrieve the current aggregate map
       aggregate_maps_element = @@aggregate_maps[task_id]
+      
+      # create aggregate map, if it doesn't exist
       if (aggregate_maps_element.nil?)
         return if @map_action == "update"
+        # create new event from previous map, if @push_previous_map_as_event is enabled
+        if (@push_previous_map_as_event and !@@aggregate_maps.empty?)
+          previous_map = @@aggregate_maps.shift[1].map
+          event_to_yield = LogStash::Event.new(previous_map)
+        end
         aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
         @@aggregate_maps[task_id] = aggregate_maps_element
       else
@@ -284,10 +343,15 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       
       # delete the map if task is ended
       @@aggregate_maps.delete(task_id) if @end_of_task
+      
     end
 
     # match the filter, only if no error occurred
     filter_matched(event) if noError
+
+    # yield previous map as new event if set
+    yield event_to_yield unless event_to_yield.nil?
+
   end
 
   # Necessary to indicate logstash to periodically call 'flush' method
@@ -305,20 +369,33 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     
     # Launch eviction only every interval of (@timeout / 2) seconds
     if (@@eviction_instance == self && (@@last_eviction_timestamp.nil? || Time.now > @@last_eviction_timestamp + @timeout / 2))
-      remove_expired_elements()
+      events_to_flush = remove_expired_maps()
       @@last_eviction_timestamp = Time.now
     end
     
-    return nil
+    return events_to_flush
   end
 
   
-  # Remove the expired Aggregate elements from "aggregate_maps" if they are older than timeout
-  def remove_expired_elements()
+  # Remove the expired Aggregate maps from @@aggregate_maps if they are older than timeout.
+  # If @push_previous_map_as_event option is set, expired maps are returned as new events to be flushed to Logstash pipeline.
+  def remove_expired_maps()
+    events_to_flush = []
     min_timestamp = Time.now - @timeout
+    
     @@mutex.synchronize do
-      @@aggregate_maps.delete_if { |key, element| element.creation_timestamp < min_timestamp }
+      @@aggregate_maps.delete_if do |key, element| 
+        if (element.creation_timestamp < min_timestamp)
+          if (@push_previous_map_as_event)
+            events_to_flush << LogStash::Event.new(element.map)
+          end
+          next true
+        end
+        next false
+      end
     end
+    
+    return events_to_flush
   end
 
 end # class LogStash::Filters::Aggregate

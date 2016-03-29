@@ -1,3 +1,6 @@
+## 2.2.0
+ - new feature: add new option "push_previous_map_as_event" so that each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event
+
 ## 2.1.2
  - bugfix: clarify default timeout behaviour : by default, timeout is 1800s 
 
