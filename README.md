@@ -1,6 +1,6 @@
 # Logstash Filter Aggregate Documentation
 
-[![Build Status](http://build-eu-00.elastic.co/view/LS%20Plugins/view/LS%20Filters/job/logstash-plugin-filter-aggregate-unit/badge/icon)](http://build-eu-00.elastic.co/view/LS%20Plugins/view/LS%20Filters/job/logstash-plugin-filter-aggregate-unit/)
+[![Travis Build Status](https://travis-ci.org/logstash-plugins/logstash-filter-aggregate.svg)](https://travis-ci.org/logstash-plugins/logstash-filter-aggregate)
 
 The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task, and finally push aggregated information into final task event.
 
