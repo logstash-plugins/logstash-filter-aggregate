@@ -147,8 +147,14 @@ Default value: `false`
 
 - **timeout:**  
 The amount of seconds after a task "end event" can be considered lost.  
-The task "map" is then evicted.  
+When timeout occurs for a task, The task "map" is evicted.  
 The default value is 0, which means no timeout so no auto eviction.  
+
+- **aggregate_maps_path:**  
+The path to file where aggregate maps are stored when logstash stops and are loaded from when logstash starts.  
+If not defined, aggregate maps will not be stored at logstash stop and will be lost.   
+Should be defined for only one aggregate filter (as aggregate maps are global).  
+Example value : `"/path/to/.aggregate_maps"`
 
 
 ## Need Help?
