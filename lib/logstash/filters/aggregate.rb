@@ -147,7 +147,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # You will have a 'map' variable and an 'event' variable available (that is the event itself).
   #
-  # Example value : "map['sql_duration'] += event['duration']"
+  # Example value : `"map['sql_duration'] += event['duration']"`
   config :code, :validate => :string, :required => true
 
   # Tell the filter what to do with aggregate map.
@@ -164,11 +164,20 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # The amount of seconds after a task "end event" can be considered lost.
   #
-  # The task "map" is evicted.
+  # When timeout occurs for a task, The task "map" is evicted.
   #
   # Default value (`0`) means no timeout so no auto eviction.
   config :timeout, :validate => :number, :required => false, :default => 0
 
+  # The path to file where aggregate maps are stored when logstash stops
+  # and are loaded from when logstash starts.
+  #
+  # If not defined, aggregate maps will not be stored at logstash stop and will be lost. 
+  # Should be defined for only one aggregate filter (as aggregate maps are global).
+  #
+  # Example value : `"/path/to/.aggregate_maps"`
+  config :aggregate_maps_path, :validate => :string, :required => false
+  
   
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
@@ -192,15 +201,34 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     # process lambda expression to call in each filter call
     eval("@codeblock = lambda { |event, map| #{@code} }", binding, "(aggregate filter code)")
 
-    # define eviction_instance
     @@mutex.synchronize do
+      # define eviction_instance
       if (@timeout > 0 && (@@eviction_instance.nil? || @timeout < @@eviction_instance.timeout))
         @@eviction_instance = self
         @logger.info("Aggregate, timeout: #{@timeout} seconds")
       end
+      
+      # load aggregate maps from file (if option defined)
+      if (!@aggregate_maps_path.nil? && File.exist?(@aggregate_maps_path))
+        File.open(@aggregate_maps_path, "r") { |from_file| @@aggregate_maps = Marshal.load(from_file) }
+        File.delete(@aggregate_maps_path)
+        @logger.info("Aggregate, load aggregate maps from : #{@aggregate_maps_path}")
+      end
     end
   end
 
+  # Called when logstash stops
+  public
+  def close
+    @@mutex.synchronize do
+      # store aggregate maps to file (if option defined)
+      if (!@aggregate_maps_path.nil? && !@@aggregate_maps.empty?)
+        File.open(@aggregate_maps_path, "w"){ |to_file| Marshal.dump(@@aggregate_maps, to_file) }
+        @@aggregate_maps.clear()
+        @logger.info("Aggregate, store aggregate maps to : #{@aggregate_maps_path}")
+      end
+    end
+  end
   
   # This method is invoked each time an event matches the filter
   public

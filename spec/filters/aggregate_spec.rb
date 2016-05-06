@@ -182,4 +182,29 @@ describe LogStash::Filters::Aggregate do
 
   end
 
+  context "aggregate_maps_path option is defined, " do
+    describe "close event append then register event append, " do
+      it "stores aggregate maps to configured file and then loads aggregate maps from file" do
+        
+        store_file = "aggregate_maps"
+        expect(File.exist?(store_file)).to be false
+          
+        store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
+        expect(aggregate_maps).to be_empty
+
+        start_event = start_event("taskid" => 124)
+        filter = store_filter.filter(start_event)
+        expect(aggregate_maps.size).to eq(1)
+        
+        store_filter.close()
+        expect(File.exist?(store_file)).to be true
+        expect(aggregate_maps).to be_empty
+
+        store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
+        expect(File.exist?(store_file)).to be false
+        expect(aggregate_maps.size).to eq(1)
+        
+      end
+    end
+  end
 end
