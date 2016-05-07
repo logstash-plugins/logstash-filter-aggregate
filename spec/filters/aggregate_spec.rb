@@ -206,5 +206,16 @@ describe LogStash::Filters::Aggregate do
         
       end
     end
+
+    describe "when aggregate_maps_path option is defined in 2 instances, " do
+      it "raises Logstash::ConfigurationError" do
+
+        expect {
+          setup_filter({ "code" => "", "aggregate_maps_path" => "aggregate_maps1" })
+          setup_filter({ "code" => "", "aggregate_maps_path" => "aggregate_maps2" })
+        }.to raise_error(LogStash::ConfigurationError)
+        
+      end
+    end
   end
 end

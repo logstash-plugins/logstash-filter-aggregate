@@ -153,8 +153,13 @@ The default value is 0, which means no timeout so no auto eviction.
 - **aggregate_maps_path:**  
 The path to file where aggregate maps are stored when logstash stops and are loaded from when logstash starts.  
 If not defined, aggregate maps will not be stored at logstash stop and will be lost.   
-Should be defined for only one aggregate filter (as aggregate maps are global).  
+Must be defined in only one aggregate filter (as aggregate maps are global).  
 Example value : `"/path/to/.aggregate_maps"`
+
+
+## Changelog
+
+Read [CHANGELOG.md](CHANGELOG.md).
 
 
 ## Need Help?

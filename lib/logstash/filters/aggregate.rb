@@ -173,7 +173,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # and are loaded from when logstash starts.
   #
   # If not defined, aggregate maps will not be stored at logstash stop and will be lost. 
-  # Should be defined for only one aggregate filter (as aggregate maps are global).
+  # Must be defined in only one aggregate filter (as aggregate maps are global).
   #
   # Example value : `"/path/to/.aggregate_maps"`
   config :aggregate_maps_path, :validate => :string, :required => false
@@ -195,6 +195,10 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # last time where eviction was launched
   @@last_eviction_timestamp = nil
 
+  # flag indicating if aggregate_maps_path option has been already set on one aggregate instance
+  @@aggregate_maps_path_set = false
+
+  
   # Initialize plugin
   public
   def register
@@ -206,6 +210,16 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       if (@timeout > 0 && (@@eviction_instance.nil? || @timeout < @@eviction_instance.timeout))
         @@eviction_instance = self
         @logger.info("Aggregate, timeout: #{@timeout} seconds")
+      end
+
+      # check if aggregate_maps_path option has already been set on another instance
+      if (!@aggregate_maps_path.nil?)
+        if (@@aggregate_maps_path_set)
+          @@aggregate_maps_path_set = false
+          raise LogStash::ConfigurationError, "Option 'aggregate_maps_path' must be set on only one aggregate filter"
+        else
+          @@aggregate_maps_path_set = true
+        end
       end
       
       # load aggregate maps from file (if option defined)
@@ -220,6 +234,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Called when logstash stops
   public
   def close
+
+    # Protection against logstash reload
+    @@aggregate_maps_path_set = false if @@aggregate_maps_path_set
+    @@eviction_instance = nil unless @@eviction_instance.nil?
+
     @@mutex.synchronize do
       # store aggregate maps to file (if option defined)
       if (!@aggregate_maps_path.nil? && !@@aggregate_maps.empty?)
