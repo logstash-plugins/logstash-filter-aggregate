@@ -1,3 +1,7 @@
+## 2.1.1
+ - bugfix: when "aggregate_maps_path" option is defined in more than one aggregate filter, raise a Logstash::ConfigurationError 
+ - bugfix: add support for logstash hot reload feature 
+
 ## 2.1.0
  - new feature: add new option "aggregate_maps_path" so that aggregate maps can be stored at logstash shutdown and reloaded at logstash startup
 
