@@ -1,3 +1,6 @@
+## 2.1.2
+ - bugfix: clarify default timeout behaviour : by default, timeout is 1800s 
+
 ## 2.1.1
  - bugfix: when "aggregate_maps_path" option is defined in more than one aggregate filter, raise a Logstash::ConfigurationError 
  - bugfix: add support for logstash hot reload feature 

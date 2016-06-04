@@ -148,7 +148,7 @@ Default value: `false`
 - **timeout:**  
 The amount of seconds after a task "end event" can be considered lost.  
 When timeout occurs for a task, The task "map" is evicted.  
-The default value is 0, which means no timeout so no auto eviction.  
+If no timeout is defined, default timeout will be applied : 1800 seconds.  
 
 - **aggregate_maps_path:**  
 The path to file where aggregate maps are stored when logstash stops and are loaded from when logstash starts.  
