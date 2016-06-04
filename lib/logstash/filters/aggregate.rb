@@ -166,8 +166,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # When timeout occurs for a task, The task "map" is evicted.
   #
-  # Default value (`0`) means no timeout so no auto eviction.
-  config :timeout, :validate => :number, :required => false, :default => 0
+  # If no timeout is defined, default timeout will be applied : 1800 seconds.
+  config :timeout, :validate => :number, :required => false
 
   # The path to file where aggregate maps are stored when logstash stops
   # and are loaded from when logstash starts.
@@ -207,7 +207,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
     @@mutex.synchronize do
       # define eviction_instance
-      if (@timeout > 0 && (@@eviction_instance.nil? || @timeout < @@eviction_instance.timeout))
+      if (!@timeout.nil? && (@@eviction_instance.nil? || @timeout < @@eviction_instance.timeout))
         @@eviction_instance = self
         @logger.info("Aggregate, timeout: #{@timeout} seconds")
       end
