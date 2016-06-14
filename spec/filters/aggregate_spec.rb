@@ -10,7 +10,7 @@ describe LogStash::Filters::Aggregate do
     aggregate_maps.clear()
     @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
     @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event['duration']" })
-    @end_filter = setup_filter({ "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5 })
+    @end_filter = setup_filter({ "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event['test'] = 'testValue'" })
   end
 
   context "Start event" do
@@ -121,6 +121,23 @@ describe LogStash::Filters::Aggregate do
     end
   end
 
+  context "Events advance the modified date" do
+    it "shows that the modified date changes" do
+      start_event = start_event("taskid" => "test-124")
+      @start_filter.filter(start_event)
+      expect(aggregate_maps.size).to eq(1)
+
+      oldTimestamp = aggregate_maps["test-124"].last_modified
+
+      sleep(1)
+      @update_filter.filter(update_event("taskid" => "test-124", "duration" => 2))
+      expect(aggregate_maps.size).to eq(1)
+
+      newTimestamp = aggregate_maps["test-124"].last_modified
+      expect(oldTimestamp).to be < newTimestamp
+    end
+  end
+
   context "Event which causes an exception when code call" do
     it "intercepts exception, logs the error and tags the event with '_aggregateexception'" do
       @start_filter = setup_filter({ "code" => "fail 'Test'" })
@@ -177,6 +194,20 @@ describe LogStash::Filters::Aggregate do
         sleep(2)
         @end_filter.flush()
         expect(aggregate_maps).to be_empty
+      end
+    end
+
+    describe "timeout defined on the filter" do
+      it "event is not removed if not expired" do
+        entries = @end_filter.flush()
+        expect(aggregate_maps.size).to eq(1)
+        expect(entries).to eq(nil)
+      end
+      it "event is removed and creates a new event" do
+        sleep(2)
+        entries = @end_filter.flush()
+        expect(aggregate_maps).to be_empty
+        expect(entries.size).to eq(1)
       end
     end
 
