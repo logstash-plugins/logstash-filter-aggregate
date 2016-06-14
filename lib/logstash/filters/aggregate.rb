@@ -364,7 +364,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
             @timeout_codeblock.call(event, map)
             noError = true
           rescue => exception
-            puts "Exception"
             @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
             event.tag("_aggregateexception")
           end       
