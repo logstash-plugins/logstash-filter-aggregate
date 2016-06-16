@@ -64,7 +64,9 @@ If tracking times is enabled, the timeout behaviour changes.
 
 All events will populate a second map with a timestamp, looking like that:
 
+```
 map[event['timestamp_key']] = Time.parse(event['timestamp_field'])
+```
 
 the aggregation is then created as usual with one addition: It adds a **last_modified** timestamp. This timestamp is the base for eviction. 
 
@@ -74,7 +76,40 @@ Eviction then follows these rules:
  * The timestamp entries created by the timestamp_field have a last_modified timestamp associated with them. If the last_modified of the eviction has been longer than the timeout defined, the entry is evicted. 
 
  In both cases events are created using the timeout_code. 
- 
+
+### Example configuration: 
+```
+filter {
+
+    # Uses the json filter to parse the file input and adds the path field to it
+    json {
+        source => "message"
+        add_field => { "file_path" => "%{path}"}
+    }
+
+    if [eventType] == "MY_TYPE" {
+        aggregate {
+          task_id => "%{task_id}"
+          code => " map['count'] ||= 0; 
+                    map['count'] += 1; 
+                  "
+          flush_on_all_events => true # enables flushing for all events
+
+
+          timeout_code => "event['count'] = map['count']; event['type'] = 'TIMEOUT_EVENT'; event['path'] = map['path']"
+          timeout_id => "task_id" # will map task_id in the generated event to the key "task_id"
+          timeout => 900 
+          periodic_flush => true 
+          timestamp_field => "timestamp" # Tells the filter to use the event's timestamp that is in the field "timestamp"
+          timestamp_key => "path" # Tells the filter to track timestamps based on the common field "field" which groups events from one file
+          track_times => true # Enables the above configuration
+        }
+    }
+    
+}
+```
+
+
 ## Example #1
 
 * with these given logs : 
