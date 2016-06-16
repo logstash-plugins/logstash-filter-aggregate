@@ -78,7 +78,7 @@ Eviction then follows these rules:
  In both cases events are created using the timeout_code. 
 
 ### Example configuration: 
-```
+``` ruby
 filter {
 
     # Uses the json filter to parse the file input and adds the path field to it
