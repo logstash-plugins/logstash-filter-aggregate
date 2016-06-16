@@ -7,6 +7,20 @@ The aim of this filter is to aggregate information available among several event
 You should be very careful to set logstash filter workers to 1 (`-w 1` flag) for this filter to work 
 correctly otherwise documents
 may be processed out of sequence and unexpected results will occur.
+
+
+## Customised version
+
+I have forked this repository because we had multiple requirements that this plugin almost fulfilled. So I decided to build a version on top of the original with the following features: 
+
+* Expired aggregations create new events 
+* Ability to timeout based on a timestamp field. This is because if you use a file input, and you reparse old input data, the timeout does not work as expected.
+For example, if one has data from 1 year ago, and wants to timeout events that happened 10 minutes apart, the file input will parse too quickly to react to that. I added functionality to track the timestamps based on a field
+* Ability to track different timstamps for different fields.
+Again, if one parses a lot of files, there is no guaranteed order of files. So the timestamps tracked need to be mapped to a property that groups the correct values together. For me, this is the file path. So I can parse multiple files and expire events on internal timestamps of the respective files. Otherwise, parsing a file from 1 year agao, and then a file from 1 month ago, will create a confusing timeout behaviour.
+* Adding additional timeout on each event
+If one enables timeout tracking and reparses a lot of data, this data needs to be checked after each event (because 2 events can come in 1ms apart, but advance the timestamp field used by several minutes/hours etc)
+
  
 ## Example #1
 
