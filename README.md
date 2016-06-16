@@ -58,7 +58,22 @@ This enables tracking of times based on timestamp_key and timestamp_field. It ca
 
 This enables flushing on all events. It can be true or false. If true, every event will first evict aggregations before processing. All evicted aggregations will create new events using the timeout_code. 
 
+### What does it do
 
+If tracking times is enabled, the timeout behaviour changes. 
+
+All events will populate a second map with a timestamp, looking like that:
+
+map[event['timestamp_key']] = Time.parse(event['timestamp_field'])
+
+the aggregation is then created as usual with one addition: It adds a **last_modified** timestamp. This timestamp is the base for eviction. 
+
+Eviction then follows these rules: 
+
+ * The entry in the map is checked against the last_modified timestamp. If  event_timestamp - last_modified > timeout, the entry is evicted
+ * The timestamp entries created by the timestamp_field have a last_modified timestamp associated with them. If the last_modified of the eviction has been longer than the timeout defined, the entry is evicted. 
+
+ In both cases events are created using the timeout_code. 
  
 ## Example #1
 
