@@ -39,6 +39,11 @@ def aggregate_maps()
 	LogStash::Filters::Aggregate.class_variable_get(:@@aggregate_maps)
 end
 
+def eviction_map()
+	LogStash::Filters::Aggregate.class_variable_get(:@@eviction_times)
+end
+
+
 def eviction_instance()
 	LogStash::Filters::Aggregate.class_variable_get(:@@eviction_instance)
 end

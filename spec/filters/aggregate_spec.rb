@@ -13,6 +13,65 @@ describe LogStash::Filters::Aggregate do
     @end_filter = setup_filter({ "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event['test'] = 'testValue'" })
   end
 
+  context "Event based expiy" do
+    before(:each) do
+      set_eviction_instance(nil)
+      @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0", "timestamp_field" => "ts", "timestamp_key" => "ts_key", "track_times" => true })
+      @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event['duration']", "timestamp_field" => "ts", "timestamp_key" => "ts_key", "track_times" => true })
+      @end_filter = setup_filter({ "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event['test'] = 'testValue'",
+                                    "timestamp_field" => "ts", "timestamp_key" => "ts_key", "track_times" => true })
+
+      @end_filter.timeout = 1
+      expect(@end_filter.timeout).to eq(1)
+      @task_id_value = "id_123"
+      @start_event = start_event({"taskid" => @task_id_value, "ts" => "2016-06-06T14:57:37.710Z", "ts_key" => "test"})
+      @start_filter.filter(@start_event)
+      expect(aggregate_maps.size).to eq(1)
+    end
+
+    
+    
+    describe "timeout defined on the filter" do
+      it "event is not removed if not expired" do
+        entries = @end_filter.flush()
+        expect(aggregate_maps.size).to eq(1)
+        expect(entries).to eq(nil)
+      end
+      it "event is removed and creates a new event" do
+        eviction_map['test'].time = Time.parse("2016-06-06T14:57:39.710Z") # advance this by 2 seconds
+        entries = @end_filter.flush()
+        expect(aggregate_maps).to be_empty
+        expect(entries.size).to eq(1)
+      end
+      it "expiry expires if time passes and timestamp does not advance" do
+        sleep(1)
+        entries = @end_filter.flush()
+        expect(aggregate_maps).to be_empty
+        expect(entries.size).to eq(1)
+      end     
+      it "events update timesamp for key" do
+        
+        expect(aggregate_maps.size).to eq(1)
+        # this is a different event but off the same file. Hence, we have seen another date in the input for that file.
+        @start_event = start_event({"taskid" => "different-task", "ts" => "2016-06-06T14:58:37.710Z", "ts_key" => "test"})
+        @start_filter.filter(@start_event)
+        expect(aggregate_maps.size).to eq(2)
+        entries = @end_filter.flush()
+        expect(aggregate_maps.size).to eq(1)
+        expect(entries.size).to eq(1)
+      end
+      it "flush also evicts the eviction_times map entries that are not represented anymore in the aggregate maps" do
+        eviction_map['test'].time = Time.parse("2016-06-06T14:57:39.710Z") # advance this by 2 seconds
+        entries = @end_filter.flush()
+        expect(aggregate_maps).to be_empty
+        expect(entries.size).to eq(1)
+        expect(eviction_map).to be_empty
+      end
+
+    end
+
+  end
+
   context "Start event" do
     describe "and receiving an event without task_id" do
       it "does not record it" do
