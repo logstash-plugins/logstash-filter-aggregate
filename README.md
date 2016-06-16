@@ -21,6 +21,44 @@ Again, if one parses a lot of files, there is no guaranteed order of files. So t
 * Adding additional timeout on each event
 If one enables timeout tracking and reparses a lot of data, this data needs to be checked after each event (because 2 events can come in 1ms apart, but advance the timestamp field used by several minutes/hours etc)
 
+### New configration options
+
+* **Note: If non of the configurations are set, the filter will behave as the original one. **
+
+* **timeout_code**
+
+This is the code to be executed when an aggregation times out
+
+* **timeout_id**
+
+This is simply the mapping that will be applied to the task-id values of the original config. So once a timeout occurs, the key of that aggregation will be added with the timeout_id as key. For example, if a task has an id saying task_id => "test1", the expired event will have a field event['timeout_id'] = map['task_id']
+
+* **timestamp_field**
+
+This field tells the filter where to find the timestamp to use for tracking. This timestamp will pe parsed, so it needs to be a valid timestamp. you can test that by going into a ruby interactive shell and doing: 
+
+Time.parse("my-timestamp-representatin")
+
+for example:
+
+Time.parse("2016-06-11 14:07:46 +0100");
+
+* **timestamp_key**
+This is the tracking key that indentifies which timestamp to use for tracking. For example, if you are parsing X files, you could set that to "file_path". This way, there will be a mapping of 
+
+[ "my-path-to-file" => "2016-06-11 14:07:46 +0100"]
+
+That way each event will have a dedicated correlation timestamp and it does not matter if files come in out of order
+
+* **track_times**
+
+This enables tracking of times based on timestamp_key and timestamp_field. It can be true or false
+
+* **flush_on_all_events**
+
+This enables flushing on all events. It can be true or false. If true, every event will first evict aggregations before processing. All evicted aggregations will create new events using the timeout_code. 
+
+
  
 ## Example #1
 
