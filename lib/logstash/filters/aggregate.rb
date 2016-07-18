@@ -203,31 +203,13 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Example value : `"/path/to/.aggregate_maps"`
   config :aggregate_maps_path, :validate => :string, :required => false
   
-  # This is the field that contains the timestamp in the json. This needs to be a parsable timestamp
-  config :timestamp_field, :validate => :string, :required => false
-
-  # This is the field containing the key of the the timestamp mapping.
-  # For example, if one has many events that needs aggregating that all come from one file
-  # And one wants to keep track of the timestamp on that file for that file
-  # the key would be "path"
-  config :timestamp_key, :validate => :string, :required => false
-
-  # This enables time tracking. By default disabled
-  config :track_times, :validate => :boolean, :default => false
-
-  config :flush_on_all_events, :validate => :boolean, :default => false
-
+  
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
 
   # This is the state of the filter.
   # For each entry, key is "task_id" and value is a map freely updatable by 'code' config
   @@aggregate_maps = {}
-
-
-  # This is the time tracker.
-  # For each entry, key is "timestamp_key" and value is the parsed timstamp_field 
-  @@eviction_times = {}
 
   # Mutex used to synchronize access to 'aggregate_maps'
   @@mutex = Mutex.new
@@ -309,30 +291,12 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     # protect aggregate_maps against concurrent access, using a mutex
     @@mutex.synchronize do
     
-      # update the eviction timestamp so we know the last time we saw an event from this file
-
-      if @flush_on_all_events
-        exipredEvents = remove_expired_elements()
-        exipredEvents.each { |e| yield e} if !exipredEvents.nil?
-      end
-
-
-
-      if @track_times
-        @@eviction_times[event[@timestamp_key]] = LogStash::Filters::Aggregate::TimeOut.new(Time.parse(event[@timestamp_field]))
-      end
-
       # retrieve the current aggregate map
       aggregate_maps_element = @@aggregate_maps[task_id]
       
       if (aggregate_maps_element.nil?)
         return if @map_action == "update"
-
-        eviction_key = @track_times ? event[@timestamp_key] : "no_key"
-
-        creation_time = @track_times ? Time.parse(event[@timestamp_field]) : Time.now
-
-        aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(creation_time, eviction_key);
+        aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
         @@aggregate_maps[task_id] = aggregate_maps_element
       else
         return if @map_action == "create"
@@ -342,14 +306,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       # execute the code to read/update map and event
       begin
         @codeblock.call(event, map)
-
-        last_modified = @timestamp_field ? Time.parse(event[@timestamp_field]) : Time.now
-
-        # This is always true for when we take the current time but now when we bulk process since multithreading processes out of order
-        if aggregate_maps_element.last_modified < last_modified
-          aggregate_maps_element.last_modified = last_modified
-        end
-        
+        aggregate_maps_element.last_modified = Time.now
         noError = true
       rescue => exception
         @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
@@ -379,10 +336,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     
     # Launch eviction only every interval of (@timeout / 2) seconds
     if (@@eviction_instance == self && (@@last_eviction_timestamp.nil? || Time.now > @@last_eviction_timestamp + @timeout / 2))
-      exipredEvents = nil
-      @@mutex.synchronize do
-        exipredEvents = remove_expired_elements()
-      end
+      exipredEvents = remove_expired_elements()
       @@last_eviction_timestamp = Time.now
       return exipredEvents
     end
@@ -392,37 +346,10 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Remove the expired Aggregate elements from "aggregate_maps" if they are older than timeout
   def remove_expired_elements()
     min_timestamp = Time.now - @timeout
-    
+    @@mutex.synchronize do
       events = []
       deleted = {}
-      @@aggregate_maps.delete_if { |key, element| 
-        
-        last_checked_delta = 0
-
-        if @track_times
-          min_timestamp = @@eviction_times[element.eviction_key].time - @timeout
-          last_checked_delta = Time.now - @@eviction_times[element.eviction_key].last_modified
-        end 
-
-        if element.last_modified < min_timestamp || last_checked_delta > @timeout
-          deleted[key] = element 
-          true
-        else
-          false
-        end
-      }
-
-
-      # We now need to also clean up the evicition times that are no longer used
-      # These are the eviction times that exist and have a key that does not exist in the aggreagte_maps values eviction_key
-
-      # let's invert the map for faster lookup
-      tmp_invert = Set.new
-      @@aggregate_maps.each { |k,v| tmp_invert.add(v.eviction_key)}
-
-      @@eviction_times.delete_if { |k,v| !tmp_invert.include?(k) }
-
-      # we have now cleaned up eviction times
+      @@aggregate_maps.delete_if { |key, element| element.last_modified < min_timestamp ? deleted[key] = element : false}
 
       if @timeout_code and deleted.size > 0
         
@@ -437,7 +364,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
             @timeout_codeblock.call(event, map)
             noError = true
           rescue => exception
-            @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@timeout_code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
+            @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
             event.tag("_aggregateexception")
           end       
 
@@ -447,32 +374,19 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         return events
       end
         return nil
-    
+    end
   end
 
 end # class LogStash::Filters::Aggregate
 
-# Element of 
-class LogStash::Filters::Aggregate::TimeOut
-
-  attr_accessor :last_modified, :time
-
-  def initialize(time)
-    @last_modified = Time.now
-    @time = time
-  end
-
-end
-
-# Element of "aggregate_maps" eviction_times
+# Element of "aggregate_maps"
 class LogStash::Filters::Aggregate::Element
 
-  attr_accessor :creation_timestamp, :map, :last_modified, :eviction_key
+  attr_accessor :creation_timestamp, :map, :last_modified
 
-  def initialize(creation_timestamp, eviction_key)
+  def initialize(creation_timestamp)
     @creation_timestamp = creation_timestamp
     @last_modified = creation_timestamp
-    @eviction_key = eviction_key
     @map = {}
   end
 end
