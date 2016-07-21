@@ -1,3 +1,10 @@
+## 2.2.1
+ - new feature: Add new option "push_map_as_event_on_timeout" so that when events time out they can be yielded as new events
+ - new feature: Add new option "timeout_code" which takes the event and executes code on it. This works for "push_map_as_event_on_timeout" as well as "push_previous_map_as_event"
+
+## 2.2.0
+ - new feature: add new option "push_previous_map_as_event" so that each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event
+
 ## 2.1.2
  - bugfix: clarify default timeout behaviour : by default, timeout is 1800s 
 
