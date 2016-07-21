@@ -4,9 +4,8 @@
 
 The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task, and finally push aggregated information into final task event.
 
-You should be very careful to set logstash filter workers to 1 (`-w 1` flag) for this filter to work 
-correctly otherwise documents
-may be processed out of sequence and unexpected results will occur.
+You should be very careful to set logstash filter workers to 1 (`-w 1` flag) for this filter to work correctly 
+otherwise events may be processed out of sequence and unexpected results will occur.
  
 ## Example #1
 
@@ -101,6 +100,47 @@ the field `sql_duration` is added and contains the sum of all sql queries durati
 * the key point is the "||=" ruby operator.  
 it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 
+## Example #3
+
+Third use case : you have no specific start event and no specific end event.  
+A typical case is aggregating results from jdbc input plugin.  
+* Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
+* Using jdbc input plugin, you get these 3 events from :
+``` json
+  { "country_name": "France", "town_name": "Paris" }
+  { "country_name": "France", "town_name": "Marseille" }
+  { "country_name": "USA", "town_name": "New-York" }
+```
+* And you would like these 2 result events to push them into elasticsearch :
+``` json
+  { "country_name": "France", "town_name": [ "Paris", "Marseille" ] }
+  { "country_name": "USA", "town_name": [ "New-York" ] }
+```
+* You can do that using `push_previous_map_as_event` aggregate plugin option :
+``` ruby
+     filter {
+         aggregate {
+             task_id => "%{country_name}"
+             code => "
+                map['tags'] ||= ['aggregated']
+                map['town_name'] ||= []
+                event.to_hash.each do |key,value|
+                    map[key] = value unless map.has_key?(key)
+                    map[key] << value if map[key].is_a?(Array)
+                end
+             "
+             push_previous_map_as_event => true
+             timeout => 5
+         }
+
+         if "aggregated" not in [tags] {
+            drop {}
+         }
+     }
+```
+* The key point is that, each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
+* When 5s timeout comes, the last aggregate map is pushed as a new event
+* Finally, initial events (which are not aggregated) are dropped because useless
 
 ## How it works
 - the filter needs a "task_id" to correlate events (log lines) of a same task
@@ -114,7 +154,7 @@ it allows to initialize 'sql_duration' map entry to 0 only if this map entry is 
 
 ## Use Cases
 - extract some cool metrics from task logs and push them into task final log event (like in example #1 and #2)
-- extract error information in any task log line, and push it in final task event (to get a final document with all error information if any)
+- extract error information in any task log line, and push it in final task event (to get a final event with all error information if any)
 - extract all back-end calls as a list, and push this list in final task event (to get a task profile)
 - extract all http headers logged in several lines to push this list in final task event (complete http request info)
 - for every back-end call, collect call details available on several lines, analyse it and finally tag final back-end call log line (error, timeout, business-warning, ...)
@@ -155,6 +195,12 @@ The path to file where aggregate maps are stored when logstash stops and are loa
 If not defined, aggregate maps will not be stored at logstash stop and will be lost.   
 Must be defined in only one aggregate filter (as aggregate maps are global).  
 Example value : `"/path/to/.aggregate_maps"`
+
+- **push_previous_map_as_event:**  
+When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
+and then creates a new empty map for the next task.  
+_WARNING:_ this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...  
+Default value: `false`  
 
 
 ## Changelog
