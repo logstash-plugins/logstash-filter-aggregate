@@ -121,23 +121,6 @@ describe LogStash::Filters::Aggregate do
     end
   end
 
-  context "Events advance the modified date" do
-    it "shows that the modified date changes" do
-      start_event = start_event("taskid" => "test-124")
-      @start_filter.filter(start_event)
-      expect(aggregate_maps.size).to eq(1)
-
-      oldTimestamp = aggregate_maps["test-124"].last_modified
-
-      sleep(1)
-      @update_filter.filter(update_event("taskid" => "test-124", "duration" => 2))
-      expect(aggregate_maps.size).to eq(1)
-
-      newTimestamp = aggregate_maps["test-124"].last_modified
-      expect(oldTimestamp).to be < newTimestamp
-    end
-  end
-
   context "Event which causes an exception when code call" do
     it "intercepts exception, logs the error and tags the event with '_aggregateexception'" do
       @start_filter = setup_filter({ "code" => "fail 'Test'" })

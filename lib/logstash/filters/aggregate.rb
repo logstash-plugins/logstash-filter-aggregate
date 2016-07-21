@@ -382,7 +382,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       # execute the code to read/update map and event
       begin
         @codeblock.call(event, map)
-        aggregate_maps_element.last_modified = Time.now
         noError = true
       rescue => exception
         @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
@@ -468,11 +467,10 @@ end # class LogStash::Filters::Aggregate
 # Element of "aggregate_maps"
 class LogStash::Filters::Aggregate::Element
 
-  attr_accessor :creation_timestamp, :map, :last_modified
+  attr_accessor :creation_timestamp, :map
 
   def initialize(creation_timestamp)
     @creation_timestamp = creation_timestamp
-    @last_modified = creation_timestamp
     @map = {}
   end
 end
