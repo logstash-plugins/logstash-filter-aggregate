@@ -1,4 +1,4 @@
-## 2.2.1
+## 2.3.0
  - new feature: Add new option "push_map_as_event_on_timeout" so that when events time out they can be yielded as new events
  - new feature: Add new option "timeout_code" which takes the event and executes code on it. This works for "push_map_as_event_on_timeout" as well as "push_previous_map_as_event"
 

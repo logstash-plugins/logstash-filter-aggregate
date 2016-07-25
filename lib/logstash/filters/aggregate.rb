@@ -207,13 +207,14 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # This sets the event's key for the task id value. The aggregate plugin maps the aggregation map to 
   # a task_id value. This task_id will then be set into the event. This can help correlate which events have been timed out
   #
+  # This field has no default value and will not be set on the event if not configured.
+  #
   # Example:
   #
   # If the taskId is "12345" and this field is set to "my_Id", the generated event will have:
   # event[ "my_Id" ] = "12345"
   #
-  # Default value: "task_id"
-  config :timeout_task_id_field, :validate => :string, :default => "task_id"
+  config :timeout_task_id_field, :validate => :string, :required => false
 
 
   # Tell the filter what to do with aggregate map.
@@ -357,7 +358,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
           previous_map = @@aggregate_maps.shift[1].map
           event_to_yield = LogStash::Event.new(previous_map)
 
-          event_to_yield[@timeout_task_id_field] = task_id
+          if @timeout_task_id_field
+            event_to_yield[@timeout_task_id_field] = task_id
+          end
 
           # Call code block if available
           if @timeout_code
@@ -436,7 +439,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         if (element.creation_timestamp < min_timestamp)
           if (@push_previous_map_as_event) || (@push_map_as_event_on_timeout)
             event = LogStash::Event.new(element.map)        
-            event[@timeout_task_id_field] = task_id
+            
+            if @timeout_task_id_field
+              event_to_yield[@timeout_task_id_field] = task_id
+            end
+
             # Call code block if available
             if @timeout_code
               begin
