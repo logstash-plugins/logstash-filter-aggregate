@@ -121,7 +121,7 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
 ``` ruby
     filter {
         grok {
-                 match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{NOTSPACE:logger} - %{WORD:label}( - %{INT:duration:int})?" ]
+                 match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{GREEDYDATA:msgtext}" ]
         }
 
         aggregate {
