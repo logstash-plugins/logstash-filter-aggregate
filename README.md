@@ -102,7 +102,55 @@ it allows to initialize 'sql_duration' map entry to 0 only if this map entry is 
 
 ## Example #3
 
-Third use case : you have no specific start event and no specific end event.  
+Third use case: You have a start event, however no specific end event. 
+
+A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
+
+In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event. 
+In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
+We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. 
+
+```
+    INFO - 12345 - Clicked One
+    INFO - 12345 - Clicked Two
+    INFI - 12345 - Clicked Three
+```
+
+* You can aggregate the amount of clicks the user did like this:
+
+``` ruby
+    filter {
+        grok {
+                 match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{NOTSPACE:logger} - %{WORD:label}( - %{INT:duration:int})?" ]
+        }
+
+        aggregate {
+            task_id => "%{taskid}"
+            code => "map['clicks'] ||= 0; map['clicks'] += 1;"
+            timeout_task_id_field => "userId"
+            timeout => 600 # 10 minutes timeout
+            timeout_code => "event['tags'] = '_aggregatetimeout'"
+        }
+
+    }
+```
+
+* After ten minutes, this will yield an event like:
+
+``` json
+    {
+        "userId" : "12345",
+        "clicks" : 3,
+        "tags" : [
+            "_aggregatetimeout"
+        ]
+    }
+```
+
+
+## Example #4
+
+Fourth use case : you have no specific start event and no specific end event.  
 A typical case is aggregating results from jdbc input plugin.  
 * Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
 * Using jdbc input plugin, you get these 3 events from :

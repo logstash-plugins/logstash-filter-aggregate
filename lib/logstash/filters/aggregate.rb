@@ -197,15 +197,17 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 
 
-  # This configuration describes the code block that is executed either on timeout 
-  # or in case 'push_previous_map_as_event' is set to true.
+  # The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true. 
+  # The code block will have access to the newly generated timeout event that is pre-populated with the aggregation_map values. 
   #
-  # Example value : `"map['sql_duration'] += event['duration']"`
+  # If 'timeout_task_id_field' is set, the event is also populated with the task_id value 
+  #
+  # Example value: `"event['tags'] = '_aggregatetimeout'"`
   config :timeout_code, :validate => :string, :required => false
 
 
-  # This sets the event's key for the task id value. The aggregate plugin maps the aggregation map to 
-  # a task_id value. This task_id will then be set into the event. This can help correlate which events have been timed out
+  # This option indicates the timeout generated event's field for the "task_id" value. 
+  # The task id will then be set into the timeout event. This can help correlate which tasks have been timed out.  
   #
   # This field has no default value and will not be set on the event if not configured.
   #
@@ -247,15 +249,12 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   
   # When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
   # and then creates a new empty map for the next task.
-  # 
-  # When the timeout code is set, the event populated with the aggregation map is passed to the timeout code before the event is yielded
   #
   # WARNING: this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...
   config :push_previous_map_as_event, :validate => :boolean, :required => false, :default => false
   
-
-  # When this option is enabled, each time the aggreagte flushes, the aggregate map is checked for timeouts. If a timeout is detected, 
-  # the plugin will write the aggregation map into a new event. This enables storing found tasks that never receive an end task   
+  # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
+  # This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
   config :push_map_as_event_on_timeout, :validate => :boolean, :required => false, :default => false
   
   # Default timeout (in seconds) when not defined in plugin configuration
