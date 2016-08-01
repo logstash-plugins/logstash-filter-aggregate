@@ -110,8 +110,61 @@ require "thread"
 #
 #
 # ==== Example #3
+#
+# Third use case: You have a start event, however no specific end event. 
+#
+# A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
+#
+# In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when a timeout occurs.  
+# In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
+# We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. 
+#
+# * Given these logs: 
+#
+# [source,ruby]
+# ----------------------------------
+# INFO - 12345 - SQL - sqlQuery1 - 12
+# INFO - 12345 - SQL - sqlQuery2 - 34
+# INFO - 12345 - TASK_END - end
+# ----------------------------------
+#
+# * You can aggregate the amount of clicks the user did like this:
+#
 # 
-# Third use case : you have no specific start event and no specific end event.  
+# [source,ruby]
+# ----------------------------------
+# filter {
+#   grok {
+#     match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:user_id} - %{GREEDYDATA:msg_text}" ]
+#   }
+#
+#   aggregate {
+#     task_id => "%{user_id}"
+#     code => "map['clicks'] ||= 0; map['clicks'] += 1;"
+#     push_map_as_event_on_timeout => true
+#     timeout_task_id_field => "user_id"
+#     timeout => 600 # 10 minutes timeout
+#     timeout_code => "event['tags'] = '_aggregatetimeout'"
+#   }
+# }
+# ----------------------------------
+#
+# * After ten minutes, this will yield an event like:
+#
+# [source,json]
+# ----------------------------------
+# {
+#   "user_id" : "12345",
+#   "clicks" : 3,
+#     "tags" : [
+#        "_aggregatetimeout"
+#     ]
+# }
+# ----------------------------------
+#
+# ==== Example #4
+# 
+# Fourth use case : you have no specific start event and no specific end event.  
 # * A typical case is aggregating results from jdbc input plugin.  
 # * Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
 # * Using jdbc input plugin, you get these 3 events from :
@@ -198,7 +251,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
 
   # The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true. 
-  # The code block will have access to the newly generated timeout event that is pre-populated with the aggregation_map values. 
+  # The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map. 
   #
   # If 'timeout_task_id_field' is set, the event is also populated with the task_id value 
   #
@@ -213,8 +266,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # Example:
   #
-  # If the taskId is "12345" and this field is set to "my_Id", the generated event will have:
-  # event[ "my_Id" ] = "12345"
+  # If the task_id is "12345" and this field is set to "my_id", the generated event will have:
+  # event[ "my_id" ] = "12345"
   #
   config :timeout_task_id_field, :validate => :string, :required => false
 
@@ -283,6 +336,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     # process lambda expression to call in each filter call
     eval("@codeblock = lambda { |event, map| #{@code} }", binding, "(aggregate filter code)")
 
+    # process lambda expression to call in the timeout case or previous event case
     if @timeout_code
       eval("@timeout_codeblock = lambda { |event| #{@timeout_code} }", binding, "(aggregate filter timeout code)")
     end
@@ -357,6 +411,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
           previous_map = @@aggregate_maps.shift[1].map
           event_to_yield = LogStash::Event.new(previous_map)
 
+
           if @timeout_task_id_field
             event_to_yield[@timeout_task_id_field] = task_id
           end
@@ -364,12 +419,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
           # Call code block if available
           if @timeout_code
             begin
-              @timeout_codeblock.call(event)
-              events_to_flush << event
+              @timeout_codeblock.call(event_to_yield)
               noError = true
             rescue => exception
-              @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@timeout_code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
-              event.tag("_aggregateexception")
+              @logger.error("Aggregate exception occurred. Error: #{exception} ; TimeoutCode: #{@timeout_code} ; EventData: #{event_to_yield.instance_variable_get('@data')}")
+              event_to_yield.tag("_aggregateexception")
             end
           end
 
@@ -427,7 +481,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   
   # Remove the expired Aggregate maps from @@aggregate_maps if they are older than timeout.
-  # If @push_previous_map_as_event option is set, expired maps are returned as new events to be flushed to Logstash pipeline.
+  # If @push_previous_map_as_event option is set, or @push_map_as_event_on_timeout is set, expired maps are returned as new events to be flushed to Logstash pipeline.
   def remove_expired_maps()
     events_to_flush = []
     min_timestamp = Time.now - @timeout
@@ -437,26 +491,23 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @@aggregate_maps.delete_if do |key, element| 
         if (element.creation_timestamp < min_timestamp)
           if (@push_previous_map_as_event) || (@push_map_as_event_on_timeout)
-            event = LogStash::Event.new(element.map)        
-            
+            event_to_yield = LogStash::Event.new(element.map)        
+
             if @timeout_task_id_field
-              event_to_yield[@timeout_task_id_field] = task_id
+              event_to_yield[@timeout_task_id_field] = key
             end
 
             # Call code block if available
             if @timeout_code
               begin
-                @timeout_codeblock.call(event)
-                events_to_flush << event
-                noError = true
+                @timeout_codeblock.call(event_to_yield)
               rescue => exception
-                @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@timeout_code} ; EventData: #{event.instance_variable_get('@data')}")
-                event.tag("_aggregateexception")
+                @logger.error("Aggregate exception occurred. Error: #{exception} ; TimeoutCode: #{@timeout_code} ; TimeoutEventData: #{event_to_yield.instance_variable_get('@data')}")
+                event_to_yield.tag("_aggregateexception")
               end
-            else
-              events_to_flush << event
             end
-
+            
+            events_to_flush << event_to_yield
 
           end
           next true

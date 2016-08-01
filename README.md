@@ -106,14 +106,16 @@ Third use case: You have a start event, however no specific end event.
 
 A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
 
-In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event. 
+In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when a timeout occurs.  
 In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
 We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. 
+
+* Given these logs:
 
 ```
     INFO - 12345 - Clicked One
     INFO - 12345 - Clicked Two
-    INFI - 12345 - Clicked Three
+    INFO - 12345 - Clicked Three
 ```
 
 * You can aggregate the amount of clicks the user did like this:
@@ -121,17 +123,17 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
 ``` ruby
     filter {
         grok {
-                 match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{GREEDYDATA:msgtext}" ]
+                 match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:user_id} - %{GREEDYDATA:msg_text}" ]
         }
 
         aggregate {
-            task_id => "%{taskid}"
+            task_id => "%{user_id}"
             code => "map['clicks'] ||= 0; map['clicks'] += 1;"
-            timeout_task_id_field => "userId"
+            push_map_as_event_on_timeout => true
+            timeout_task_id_field => "user_id"
             timeout => 600 # 10 minutes timeout
             timeout_code => "event['tags'] = '_aggregatetimeout'"
         }
-
     }
 ```
 
@@ -139,7 +141,7 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
 
 ``` json
     {
-        "userId" : "12345",
+        "user_id" : "12345",
         "clicks" : 3,
         "tags" : [
             "_aggregatetimeout"
