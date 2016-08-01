@@ -407,25 +407,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         return if @map_action == "update"
         # create new event from previous map, if @push_previous_map_as_event is enabled
         if (@push_previous_map_as_event and !@@aggregate_maps.empty?)
-          previous_map = @@aggregate_maps.shift[1].map
-          event_to_yield = LogStash::Event.new(previous_map)
-
-
-          if @timeout_task_id_field
-            event_to_yield[@timeout_task_id_field] = task_id
-          end
-
-          # Call code block if available
-          if @timeout_code
-            begin
-              @timeout_codeblock.call(event_to_yield)
-              noError = true
-            rescue => exception
-              @logger.error("Aggregate exception occurred. Error: #{exception} ; TimeoutCode: #{@timeout_code} ; EventData: #{event_to_yield.instance_variable_get('@data')}")
-              event_to_yield.tag("_aggregateexception")
-            end
-          end
-
+          event_to_yield = create_timeout_event(@@aggregate_maps.shift[1].map, task_id)
         end
         aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
         @@aggregate_maps[task_id] = aggregate_maps_element
@@ -455,6 +437,32 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     yield event_to_yield unless event_to_yield.nil?
 
   end
+
+  # Create a new event from the aggregation_map and the corresponding task_id
+  # This will create the event and
+  #  if @timeout_task_id_field is set, it will set the task_id on the timeout event
+  #  if @timeout_code is set, it will execute the timeout code on the created timeout event
+  # returns the newly created event
+  public 
+  def create_timeout_event(aggregation_map, task_id)
+    event_to_yield = LogStash::Event.new(aggregation_map)        
+
+    if @timeout_task_id_field
+      event_to_yield[@timeout_task_id_field] = task_id
+    end
+
+    # Call code block if available
+    if @timeout_code
+      begin
+        @timeout_codeblock.call(event_to_yield)
+      rescue => exception
+        @logger.error("Aggregate exception occurred. Error: #{exception} ; TimeoutCode: #{@timeout_code} ; TimeoutEventData: #{event_to_yield.instance_variable_get('@data')}")
+        event_to_yield.tag("_aggregateexception")
+      end
+    end
+            
+    return event_to_yield
+  end 
 
   # Necessary to indicate logstash to periodically call 'flush' method
   def periodic_flush
@@ -490,23 +498,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @@aggregate_maps.delete_if do |key, element| 
         if (element.creation_timestamp < min_timestamp)
           if (@push_previous_map_as_event) || (@push_map_as_event_on_timeout)
-            event_to_yield = LogStash::Event.new(element.map)        
 
-            if @timeout_task_id_field
-              event_to_yield[@timeout_task_id_field] = key
-            end
-
-            # Call code block if available
-            if @timeout_code
-              begin
-                @timeout_codeblock.call(event_to_yield)
-              rescue => exception
-                @logger.error("Aggregate exception occurred. Error: #{exception} ; TimeoutCode: #{@timeout_code} ; TimeoutEventData: #{event_to_yield.instance_variable_get('@data')}")
-                event_to_yield.tag("_aggregateexception")
-              end
-            end
-            
-            events_to_flush << event_to_yield
+            events_to_flush << create_timeout_event(element.map, key)
 
           end
           next true
