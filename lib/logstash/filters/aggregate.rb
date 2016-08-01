@@ -123,13 +123,12 @@ require "thread"
 #
 # [source,ruby]
 # ----------------------------------
-# INFO - 12345 - SQL - sqlQuery1 - 12
-# INFO - 12345 - SQL - sqlQuery2 - 34
-# INFO - 12345 - TASK_END - end
+# INFO - 12345 - Clicked One
+# INFO - 12345 - Clicked Two
+# INFO - 12345 - Clicked Three
 # ----------------------------------
 #
 # * You can aggregate the amount of clicks the user did like this:
-#
 # 
 # [source,ruby]
 # ----------------------------------
