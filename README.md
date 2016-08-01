@@ -252,6 +252,23 @@ and then creates a new empty map for the next task.
 _WARNING:_ this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...  
 Default value: `false`  
 
+- **timeout_code**
+The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.  
+The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map.  
+If 'timeout_task_id_field' is set, the event is also populated with the task_id value  
+Example value: `"event['tags'] = '_aggregatetimeout'"`
+
+- **timeout_task_id_field**
+This option indicates the timeout generated event's field for the "task_id" value.  
+The task id will then be set into the timeout event. This can help correlate which tasks have been timed out.  
+This field has no default value and will not be set on the event if not configured.  
+Example:  
+If the task_id is "12345" and this field is set to "my_id", the generated event will have:  
+event[ "my_id" ] = "12345"
+
+- **push_map_as_event_on_timeout**
+When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
+This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
 
 ## Changelog
 
