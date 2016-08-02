@@ -102,7 +102,57 @@ it allows to initialize 'sql_duration' map entry to 0 only if this map entry is 
 
 ## Example #3
 
-Third use case : you have no specific start event and no specific end event.  
+Third use case: You have a start event, however no specific end event. 
+
+A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
+
+In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when a timeout occurs.  
+In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
+We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. 
+
+* Given these logs:
+
+```
+    INFO - 12345 - Clicked One
+    INFO - 12345 - Clicked Two
+    INFO - 12345 - Clicked Three
+```
+
+* You can aggregate the amount of clicks the user did like this:
+
+``` ruby
+    filter {
+        grok {
+                 match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:user_id} - %{GREEDYDATA:msg_text}" ]
+        }
+
+        aggregate {
+            task_id => "%{user_id}"
+            code => "map['clicks'] ||= 0; map['clicks'] += 1;"
+            push_map_as_event_on_timeout => true
+            timeout_task_id_field => "user_id"
+            timeout => 600 # 10 minutes timeout
+            timeout_code => "event['tags'] = '_aggregatetimeout'"
+        }
+    }
+```
+
+* After ten minutes, this will yield an event like:
+
+``` json
+    {
+        "user_id" : "12345",
+        "clicks" : 3,
+        "tags" : [
+            "_aggregatetimeout"
+        ]
+    }
+```
+
+
+## Example #4
+
+Fourth use case : you have no specific start event and no specific end event.  
 A typical case is aggregating results from jdbc input plugin.  
 * Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
 * Using jdbc input plugin, you get these 3 events from :
@@ -119,24 +169,24 @@ A typical case is aggregating results from jdbc input plugin.
 * You can do that using `push_previous_map_as_event` aggregate plugin option :
 ``` ruby
      filter {
-		 aggregate {
-		     task_id => "%{country_name}"
-		     code => "
-		     	map['tags'] ||= ['aggregated']
-		     	map['town_name'] ||= []
-		     	event.to_hash.each do |key,value|
-		     		map[key] = value unless map.has_key?(key)
-		     		map[key] << value if map[key].is_a?(Array)
-		     	end
-		     "
-		     push_previous_map_as_event => true
-		     timeout => 5
-		 }
+         aggregate {
+             task_id => "%{country_name}"
+             code => "
+                map['tags'] ||= ['aggregated']
+                map['town_name'] ||= []
+                event.to_hash.each do |key,value|
+                    map[key] = value unless map.has_key?(key)
+                    map[key] << value if map[key].is_a?(Array)
+                end
+             "
+             push_previous_map_as_event => true
+             timeout => 5
+         }
 
-		 if "aggregated" not in [tags] {
-		 	drop {}
-		 }
-	 }
+         if "aggregated" not in [tags] {
+            drop {}
+         }
+     }
 ```
 * The key point is that, each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
 * When 5s timeout comes, the last aggregate map is pushed as a new event
@@ -202,6 +252,23 @@ and then creates a new empty map for the next task.
 _WARNING:_ this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...  
 Default value: `false`  
 
+- **push_map_as_event_on_timeout**  
+When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
+This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
+
+- **timeout_code**  
+The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.  
+The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map.  
+If 'timeout_task_id_field' is set, the event is also populated with the task_id value  
+Example value: `"event['tags'] = '_aggregatetimeout'"`
+
+- **timeout_task_id_field**  
+This option indicates the timeout generated event's field for the "task_id" value.  
+The task id will then be set into the timeout event. This can help correlate which tasks have been timed out.  
+This field has no default value and will not be set on the event if not configured.  
+Example:  
+If the task_id is "12345" and this field is set to "my_id", the generated event will have:  
+`event[ "my_id" ] = "12345"`
 
 ## Changelog
 

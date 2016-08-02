@@ -110,8 +110,60 @@ require "thread"
 #
 #
 # ==== Example #3
+#
+# Third use case: You have a start event, however no specific end event. 
+#
+# A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
+#
+# In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when a timeout occurs.  
+# In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
+# We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. 
+#
+# * Given these logs: 
+#
+# [source,ruby]
+# ----------------------------------
+# INFO - 12345 - Clicked One
+# INFO - 12345 - Clicked Two
+# INFO - 12345 - Clicked Three
+# ----------------------------------
+#
+# * You can aggregate the amount of clicks the user did like this:
 # 
-# Third use case : you have no specific start event and no specific end event.  
+# [source,ruby]
+# ----------------------------------
+# filter {
+#   grok {
+#     match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:user_id} - %{GREEDYDATA:msg_text}" ]
+#   }
+#
+#   aggregate {
+#     task_id => "%{user_id}"
+#     code => "map['clicks'] ||= 0; map['clicks'] += 1;"
+#     push_map_as_event_on_timeout => true
+#     timeout_task_id_field => "user_id"
+#     timeout => 600 # 10 minutes timeout
+#     timeout_code => "event['tags'] = '_aggregatetimeout'"
+#   }
+# }
+# ----------------------------------
+#
+# * After ten minutes, this will yield an event like:
+#
+# [source,json]
+# ----------------------------------
+# {
+#   "user_id" : "12345",
+#   "clicks" : 3,
+#     "tags" : [
+#        "_aggregatetimeout"
+#     ]
+# }
+# ----------------------------------
+#
+# ==== Example #4
+# 
+# Fourth use case : you have no specific start event and no specific end event.  
 # * A typical case is aggregating results from jdbc input plugin.  
 # * Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
 # * Using jdbc input plugin, you get these 3 events from :
@@ -195,6 +247,30 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Example value : `"map['sql_duration'] += event['duration']"`
   config :code, :validate => :string, :required => true
 
+
+
+  # The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true. 
+  # The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map. 
+  #
+  # If 'timeout_task_id_field' is set, the event is also populated with the task_id value 
+  #
+  # Example value: `"event['tags'] = '_aggregatetimeout'"`
+  config :timeout_code, :validate => :string, :required => false
+
+
+  # This option indicates the timeout generated event's field for the "task_id" value. 
+  # The task id will then be set into the timeout event. This can help correlate which tasks have been timed out.  
+  #
+  # This field has no default value and will not be set on the event if not configured.
+  #
+  # Example:
+  #
+  # If the task_id is "12345" and this field is set to "my_id", the generated event will have:
+  # event[ "my_id" ] = "12345"
+  #
+  config :timeout_task_id_field, :validate => :string, :required => false
+
+
   # Tell the filter what to do with aggregate map.
   #
   # `create`: create the map, and execute the code only if map wasn't created before
@@ -225,10 +301,13 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   
   # When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
   # and then creates a new empty map for the next task.
-  # 
+  #
   # WARNING: this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...
   config :push_previous_map_as_event, :validate => :boolean, :required => false, :default => false
   
+  # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
+  # This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
+  config :push_map_as_event_on_timeout, :validate => :boolean, :required => false, :default => false
   
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
@@ -255,6 +334,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   def register
     # process lambda expression to call in each filter call
     eval("@codeblock = lambda { |event, map| #{@code} }", binding, "(aggregate filter code)")
+
+    # process lambda expression to call in the timeout case or previous event case
+    if @timeout_code
+      eval("@timeout_codeblock = lambda { |event| #{@timeout_code} }", binding, "(aggregate filter timeout code)")
+    end
 
     @@mutex.synchronize do
       # define eviction_instance
@@ -317,13 +401,14 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       # retrieve the current aggregate map
       aggregate_maps_element = @@aggregate_maps[task_id]
       
+
       # create aggregate map, if it doesn't exist
       if (aggregate_maps_element.nil?)
         return if @map_action == "update"
         # create new event from previous map, if @push_previous_map_as_event is enabled
         if (@push_previous_map_as_event and !@@aggregate_maps.empty?)
           previous_map = @@aggregate_maps.shift[1].map
-          event_to_yield = LogStash::Event.new(previous_map)
+          event_to_yield = create_timeout_event(previous_map, task_id)
         end
         aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
         @@aggregate_maps[task_id] = aggregate_maps_element
@@ -354,6 +439,31 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   end
 
+  # Create a new event from the aggregation_map and the corresponding task_id
+  # This will create the event and
+  #  if @timeout_task_id_field is set, it will set the task_id on the timeout event
+  #  if @timeout_code is set, it will execute the timeout code on the created timeout event
+  # returns the newly created event
+  def create_timeout_event(aggregation_map, task_id)
+    event_to_yield = LogStash::Event.new(aggregation_map)        
+
+    if @timeout_task_id_field
+      event_to_yield[@timeout_task_id_field] = task_id
+    end
+
+    # Call code block if available
+    if @timeout_code
+      begin
+        @timeout_codeblock.call(event_to_yield)
+      rescue => exception
+        @logger.error("Aggregate exception occurred. Error: #{exception} ; TimeoutCode: #{@timeout_code} ; TimeoutEventData: #{event_to_yield.instance_variable_get('@data')}")
+        event_to_yield.tag("_aggregateexception")
+      end
+    end
+            
+    return event_to_yield
+  end 
+
   # Necessary to indicate logstash to periodically call 'flush' method
   def periodic_flush
     true
@@ -371,23 +481,24 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if (@@eviction_instance == self && (@@last_eviction_timestamp.nil? || Time.now > @@last_eviction_timestamp + @timeout / 2))
       events_to_flush = remove_expired_maps()
       @@last_eviction_timestamp = Time.now
+      return events_to_flush
     end
-    
-    return events_to_flush
+
   end
 
   
   # Remove the expired Aggregate maps from @@aggregate_maps if they are older than timeout.
-  # If @push_previous_map_as_event option is set, expired maps are returned as new events to be flushed to Logstash pipeline.
+  # If @push_previous_map_as_event option is set, or @push_map_as_event_on_timeout is set, expired maps are returned as new events to be flushed to Logstash pipeline.
   def remove_expired_maps()
     events_to_flush = []
     min_timestamp = Time.now - @timeout
     
     @@mutex.synchronize do
+
       @@aggregate_maps.delete_if do |key, element| 
         if (element.creation_timestamp < min_timestamp)
-          if (@push_previous_map_as_event)
-            events_to_flush << LogStash::Event.new(element.map)
+          if (@push_previous_map_as_event) || (@push_map_as_event_on_timeout)
+            events_to_flush << create_timeout_event(element.map, key)
           end
           next true
         end

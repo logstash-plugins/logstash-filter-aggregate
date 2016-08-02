@@ -10,7 +10,7 @@ describe LogStash::Filters::Aggregate do
     aggregate_maps.clear()
     @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
     @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event['duration']" })
-    @end_filter = setup_filter({ "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5 })
+    @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event['test'] = 'testValue'" })
   end
 
   context "Start event" do
@@ -170,13 +170,18 @@ describe LogStash::Filters::Aggregate do
 
     describe "timeout defined on the filter" do
       it "event is not removed if not expired" do
-        @end_filter.flush()
+        entries = @end_filter.flush()
         expect(aggregate_maps.size).to eq(1)
+        expect(entries).to be_empty
       end
-      it "event is removed if expired" do
+      it "removes event if expired and creates a new timeout event" do
         sleep(2)
-        @end_filter.flush()
+        entries = @end_filter.flush()
         expect(aggregate_maps).to be_empty
+        expect(entries.size).to eq(1)
+        expect(entries[0]['my_id']).to eq("id_123") # task id 
+        expect(entries[0]["sql_duration"]).to eq(0) # Aggregation map
+        expect(entries[0]['test']).to eq("testValue") # Timeout code
       end
     end
 
@@ -231,13 +236,14 @@ describe LogStash::Filters::Aggregate do
 
     describe "when timeout happens, " do
       it "flush method should return last map as new event" do
-        push_filter = setup_filter({ "code" => "map['taskid'] = event['taskid']", "push_previous_map_as_event" => true, "timeout" => 1 })
+        push_filter = setup_filter({ "code" => "map['taskid'] = event['taskid']", "push_previous_map_as_event" => true, "timeout" => 1, "timeout_code" => "event['test'] = 'testValue'" })
         push_filter.filter(event({"taskid" => "1"}))
         sleep(2)
         events_to_flush = push_filter.flush()
         expect(events_to_flush).not_to be_nil
         expect(events_to_flush.size).to eq(1)
         expect(events_to_flush[0]["taskid"]).to eq("1")
+        expect(events_to_flush[0]['test']).to eq("testValue")
         expect(aggregate_maps.size).to eq(0)
       end
     end
