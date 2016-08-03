@@ -62,7 +62,7 @@ otherwise events may be processed out of sequence and unexpected results will oc
 
 the field `sql_duration` is added and contains the sum of all sql queries durations.
 
-## Example #2
+## Example #2 : no start event
 
 * If you have the same logs than example #1, but without a start log : 
 ```
@@ -100,9 +100,9 @@ the field `sql_duration` is added and contains the sum of all sql queries durati
 * the key point is the "||=" ruby operator.  
 it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 
-## Example #3
+## Example #3 : no end event
 
-Third use case: You have a start event, however no specific end event. 
+Third use case: You have no specific end event. 
 
 A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
 
@@ -132,7 +132,7 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
             push_map_as_event_on_timeout => true
             timeout_task_id_field => "user_id"
             timeout => 600 # 10 minutes timeout
-            timeout_code => "event['tags'] = '_aggregatetimeout'"
+            timeout_code => "event.tag('_aggregatetimeout')"
         }
     }
 ```
@@ -150,11 +150,13 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
 ```
 
 
-## Example #4
+## Example #4 : no end event and tasks come one after the other
 
-Fourth use case : you have no specific start event and no specific end event.  
-A typical case is aggregating results from jdbc input plugin.  
-* Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
+Fourth use case : like example #3, you have no specific end event, but also, tasks come one after the other.  
+That is to say : tasks are not interlaced. All task1 events come, then all task2 events come, ...  
+In that case, you don't want to wait task timeout to flush aggregation map.  
+* A typical case is aggregating results from jdbc input plugin.
+* Given that you have this SQL query : `SELECT country_name, town_name FROM town ORDER BY country_name`  
 * Using jdbc input plugin, you get these 3 events from :
 ``` json
   { "country_name": "France", "town_name": "Paris" }
@@ -188,7 +190,7 @@ A typical case is aggregating results from jdbc input plugin.
          }
      }
 ```
-* The key point is that, each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
+* The key point is that each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
 * When 5s timeout comes, the last aggregate map is pushed as a new event
 * Finally, initial events (which are not aggregated) are dropped because useless
 
@@ -260,7 +262,7 @@ This enables to detect and process task timeouts in logstash, but also to manage
 The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.  
 The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map.  
 If 'timeout_task_id_field' is set, the event is also populated with the task_id value  
-Example value: `"event['tags'] = '_aggregatetimeout'"`
+Example value: `"event.tag('_aggregatetimeout')"`
 
 - **timeout_task_id_field**  
 This option indicates the timeout generated event's field for the "task_id" value.  

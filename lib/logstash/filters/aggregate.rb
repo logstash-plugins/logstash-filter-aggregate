@@ -69,7 +69,7 @@ require "thread"
 # 
 # the field `sql_duration` is added and contains the sum of all sql queries durations.
 # 
-# ==== Example #2
+# ==== Example #2 : no start event
 # 
 # * If you have the same logs than example #1, but without a start log :
 # [source,ruby]
@@ -109,9 +109,9 @@ require "thread"
 # * the key point is the "||=" ruby operator. It allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 #
 #
-# ==== Example #3
+# ==== Example #3 : no end event
 #
-# Third use case: You have a start event, however no specific end event. 
+# Third use case: You have no specific end event. 
 #
 # A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
 #
@@ -143,7 +143,7 @@ require "thread"
 #     push_map_as_event_on_timeout => true
 #     timeout_task_id_field => "user_id"
 #     timeout => 600 # 10 minutes timeout
-#     timeout_code => "event['tags'] = '_aggregatetimeout'"
+#     timeout_code => "event.tag('_aggregatetimeout')"
 #   }
 # }
 # ----------------------------------
@@ -161,9 +161,11 @@ require "thread"
 # }
 # ----------------------------------
 #
-# ==== Example #4
+# ==== Example #4 : no end event and tasks come one after the other
 # 
-# Fourth use case : you have no specific start event and no specific end event.  
+# Fourth use case : like example #3, you have no specific end event, but also, tasks come one after the other.  
+# That is to say : tasks are not interlaced. All task1 events come, then all task2 events come, ...  
+# In that case, you don't want to wait task timeout to flush aggregation map.  
 # * A typical case is aggregating results from jdbc input plugin.  
 # * Given that you have this SQL query : `SELECT country_name, town_name FROM town`  
 # * Using jdbc input plugin, you get these 3 events from :
@@ -202,7 +204,7 @@ require "thread"
 #      }
 #    }
 # ----------------------------------
-# * The key point is that, each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
+# * The key point is that each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
 # * When 5s timeout comes, the last aggregate map is pushed as a new event
 # * Finally, initial events (which are not aggregated) are dropped because useless
 # 
@@ -254,7 +256,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # If 'timeout_task_id_field' is set, the event is also populated with the task_id value 
   #
-  # Example value: `"event['tags'] = '_aggregatetimeout'"`
+  # Example value: `"event.tag('_aggregatetimeout')"`
   config :timeout_code, :validate => :string, :required => false
 
 
