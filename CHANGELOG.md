@@ -1,3 +1,6 @@
+## 2.3.1
+ - new feature: Add new option "timeout_tags" so that you can add tags to generated timeout events
+ 
 ## 2.3.0
  - new feature: Add new option "push_map_as_event_on_timeout" so that when a task timeout happens the aggregation map can be yielded as a new event
  - new feature: Add new option "timeout_code" which takes the timeout event populated with the aggregation map and executes code on it. This works for "push_map_as_event_on_timeout" as well as "push_previous_map_as_event"

@@ -132,7 +132,8 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
             push_map_as_event_on_timeout => true
             timeout_task_id_field => "user_id"
             timeout => 600 # 10 minutes timeout
-            timeout_code => "event.tag('_aggregatetimeout')"
+            timeout_tags => ['_aggregatetimeout']
+            timeout_code => "event['several_clicks'] = (event['clicks'] > 1)"
         }
     }
 ```
@@ -141,9 +142,10 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
 
 ``` json
     {
-        "user_id" : "12345",
-        "clicks" : 3,
-        "tags" : [
+        "user_id": "12345",
+        "clicks": 3,
+        "several_clicks": true,
+        "tags": [
             "_aggregatetimeout"
         ]
     }
@@ -174,7 +176,6 @@ In that case, you don't want to wait task timeout to flush aggregation map.
          aggregate {
              task_id => "%{country_name}"
              code => "
-                map['tags'] ||= ['aggregated']
                 map['town_name'] ||= []
                 event.to_hash.each do |key,value|
                     map[key] = value unless map.has_key?(key)
@@ -183,6 +184,7 @@ In that case, you don't want to wait task timeout to flush aggregation map.
              "
              push_previous_map_as_event => true
              timeout => 5
+             timeout_tags => ['aggregated']
          }
 
          if "aggregated" not in [tags] {
@@ -262,7 +264,7 @@ This enables to detect and process task timeouts in logstash, but also to manage
 The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.  
 The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map.  
 If 'timeout_task_id_field' is set, the event is also populated with the task_id value  
-Example value: `"event.tag('_aggregatetimeout')"`
+Example value: `"event['state'] = 'timeout'"`
 
 - **timeout_task_id_field**  
 This option indicates the timeout generated event's field for the "task_id" value.  
@@ -271,6 +273,10 @@ This field has no default value and will not be set on the event if not configur
 Example:  
 If the task_id is "12345" and this field is set to "my_id", the generated event will have:  
 `event[ "my_id" ] = "12345"`
+
+- **timeout_tags**  
+Defines tags to add when a timeout event is generated and yield.  
+Default value: `[]`  
 
 ## Changelog
 
