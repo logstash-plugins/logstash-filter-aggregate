@@ -3,6 +3,7 @@
 require "logstash/filters/base"
 require "logstash/namespace"
 require "thread"
+require "logstash/util/decorators"
 
 # 
 # The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task,
@@ -143,7 +144,8 @@ require "thread"
 #     push_map_as_event_on_timeout => true
 #     timeout_task_id_field => "user_id"
 #     timeout => 600 # 10 minutes timeout
-#     timeout_code => "event.tag('_aggregatetimeout')"
+#     timeout_tags => ['_aggregatetimeout']
+#     timeout_code => "event['several_clicks'] = (event['clicks'] > 1)"
 #   }
 # }
 # ----------------------------------
@@ -153,9 +155,10 @@ require "thread"
 # [source,json]
 # ----------------------------------
 # {
-#   "user_id" : "12345",
-#   "clicks" : 3,
-#     "tags" : [
+#   "user_id": "12345",
+#   "clicks": 3,
+#   "several_clicks": true,
+#     "tags": [
 #        "_aggregatetimeout"
 #     ]
 # }
@@ -188,7 +191,6 @@ require "thread"
 #      aggregate {
 #          task_id => "%{country_name}"
 #          code => "
-#           map['tags'] ||= ['aggregated']
 #           map['town_name'] ||= []
 #           event.to_hash.each do |key,value|
 #             map[key] = value unless map.has_key?(key)
@@ -197,6 +199,7 @@ require "thread"
 #          "
 #          push_previous_map_as_event => true
 #          timeout => 5
+#          timeout_tags => ['aggregated']
 #      }
 # 
 #      if "aggregated" not in [tags] {
@@ -256,7 +259,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # If 'timeout_task_id_field' is set, the event is also populated with the task_id value 
   #
-  # Example value: `"event.tag('_aggregatetimeout')"`
+  # Example value: `"event['state'] = 'timeout'"`
   config :timeout_code, :validate => :string, :required => false
 
 
@@ -310,10 +313,15 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
   # This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
   config :push_map_as_event_on_timeout, :validate => :boolean, :required => false, :default => false
+
+  # Defines tags to add when a timeout event is generated and yield
+  config :timeout_tags, :validate => :array, :required => false, :default => []
   
+
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
 
+  
   # This is the state of the filter.
   # For each entry, key is "task_id" and value is a map freely updatable by 'code' config
   @@aggregate_maps = {}
@@ -452,6 +460,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if @timeout_task_id_field
       event_to_yield[@timeout_task_id_field] = task_id
     end
+    
+    LogStash::Util::Decorators.add_tags(@timeout_tags,event_to_yield,"filters/#{self.class.name}")
 
     # Call code block if available
     if @timeout_code

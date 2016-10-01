@@ -10,7 +10,7 @@ describe LogStash::Filters::Aggregate do
     aggregate_maps.clear()
     @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
     @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event['duration']" })
-    @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event['test'] = 'testValue'" })
+    @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.to_hash.merge!(map)", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event['test'] = 'testValue'", "timeout_tags" => ["tag1", "tag2"] })
   end
 
   context "Start event" do
@@ -182,6 +182,7 @@ describe LogStash::Filters::Aggregate do
         expect(entries[0]['my_id']).to eq("id_123") # task id 
         expect(entries[0]["sql_duration"]).to eq(0) # Aggregation map
         expect(entries[0]['test']).to eq("testValue") # Timeout code
+        expect(entries[0]['tags']).to eq(["tag1", "tag2"]) # Timeout tags
       end
     end
 
