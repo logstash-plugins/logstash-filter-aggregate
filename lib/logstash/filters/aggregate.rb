@@ -363,14 +363,12 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         end
         @@eviction_instance_map[@task_id] = self
         @logger.info("Aggregate plugin: timeout for '#{@task_id}' pattern: #{@timeout} seconds")
-        puts "Aggregate plugin: timeout for '#{@task_id}' pattern: #{@timeout} seconds"
       end
 
       # timeout management : define default_timeout 
       if !@timeout.nil? && (@@default_timeout.nil? || @timeout < @@default_timeout)
         @@default_timeout = @timeout
         @logger.info("Aggregate plugin: default timeout: #{@timeout} seconds")
-        puts "Aggregate plugin: default timeout: #{@timeout} seconds"
       end
 
       # check if aggregate_maps_path option has already been set on another instance
@@ -398,7 +396,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Called when logstash stops
   public
   def close
-    puts "DEBUG : close aggregate plugin"
 
     # store aggregate maps to file (if option defined)
     @@mutex.synchronize do
@@ -509,19 +506,16 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     # Protection against no timeout defined by logstash conf : define a default eviction instance with timeout = DEFAULT_TIMEOUT seconds
     if @@default_timeout.nil?
       @@default_timeout = DEFAULT_TIMEOUT
-      puts "DEBUG : default timeout: #{@timeout} seconds"
     end
     if !@@eviction_instance_map.has_key?(@task_id)
       @@eviction_instance_map[@task_id] = self
       @timeout = @@default_timeout
-      puts "DEBUG : default instance for pattern #{@task_id} with default timeout: #{@timeout} seconds"
     elsif @@eviction_instance_map[@task_id].timeout.nil?
       @@eviction_instance_map[@task_id].timeout = @@default_timeout
     end
     
     # Launch eviction only every interval of (@timeout / 2) seconds
     if @@eviction_instance_map[@task_id] == self && (!@@last_eviction_timestamp_map.has_key?(@task_id) || Time.now > @@last_eviction_timestamp_map[@task_id] + @timeout / 2)
-      puts "DEBUG : start flush #{@task_id}"
       events_to_flush = remove_expired_maps()
       @@last_eviction_timestamp_map[@task_id] = Time.now
       return events_to_flush
