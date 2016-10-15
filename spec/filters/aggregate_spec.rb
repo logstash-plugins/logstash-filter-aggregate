@@ -6,7 +6,7 @@ require_relative "aggregate_spec_helper"
 describe LogStash::Filters::Aggregate do
 
   before(:each) do
-    set_eviction_instance(nil)
+    reset_timeout_management()
     aggregate_maps.clear()
     @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
     @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event['duration']" })
@@ -17,7 +17,7 @@ describe LogStash::Filters::Aggregate do
     describe "and receiving an event without task_id" do
       it "does not record it" do
         @start_filter.filter(event())
-        expect(aggregate_maps).to be_empty
+        expect(aggregate_maps["%{taskid}"]).to be_empty
       end
     end
     describe "and receiving an event with task_id" do
@@ -25,10 +25,10 @@ describe LogStash::Filters::Aggregate do
         event = start_event("taskid" => "id123")
         @start_filter.filter(event)
 
-        expect(aggregate_maps.size).to eq(1)
-        expect(aggregate_maps["id123"]).not_to be_nil
-        expect(aggregate_maps["id123"].creation_timestamp).to be >= event["@timestamp"]
-        expect(aggregate_maps["id123"].map["sql_duration"]).to eq(0)
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
+        expect(aggregate_maps["%{taskid}"]["id123"]).not_to be_nil
+        expect(aggregate_maps["%{taskid}"]["id123"].creation_timestamp).to be >= event["@timestamp"]
+        expect(aggregate_maps["%{taskid}"]["id123"].map["sql_duration"]).to eq(0)
       end
     end
 
@@ -45,9 +45,9 @@ describe LogStash::Filters::Aggregate do
         second_start_event = start_event("taskid" => "id124")
         @start_filter.filter(second_start_event)
 
-        expect(aggregate_maps.size).to eq(1)
-        expect(aggregate_maps["id124"].creation_timestamp).to be < second_start_event["@timestamp"]
-        expect(aggregate_maps["id124"].map["sql_duration"]).to eq(first_update_event["duration"])
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
+        expect(aggregate_maps["%{taskid}"]["id124"].creation_timestamp).to be < second_start_event["@timestamp"]
+        expect(aggregate_maps["%{taskid}"]["id124"].map["sql_duration"]).to eq(first_update_event["duration"])
       end
     end
   end
@@ -59,7 +59,7 @@ describe LogStash::Filters::Aggregate do
           end_event = end_event("taskid" => "id124")
           @end_filter.filter(end_event)
 
-          expect(aggregate_maps).to be_empty
+          expect(aggregate_maps["%{taskid}"]).to be_empty
           expect(end_event["sql_duration"]).to be_nil
         end
       end
@@ -72,7 +72,7 @@ describe LogStash::Filters::Aggregate do
         @task_id_value = "id_123"
         @start_event = start_event({"taskid" => @task_id_value})
         @start_filter.filter(@start_event)
-        expect(aggregate_maps.size).to eq(1)
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
       end
 
       describe "and receiving an end event" do
@@ -80,7 +80,7 @@ describe LogStash::Filters::Aggregate do
           it "does nothing" do
             end_event = end_event()
             @end_filter.filter(end_event)
-            expect(aggregate_maps.size).to eq(1)
+            expect(aggregate_maps["%{taskid}"].size).to eq(1)
             expect(end_event["sql_duration"]).to be_nil
           end
         end
@@ -90,21 +90,21 @@ describe LogStash::Filters::Aggregate do
             different_id_value = @task_id_value + "_different"
             @end_filter.filter(end_event("taskid" => different_id_value))
 
-            expect(aggregate_maps.size).to eq(1)
-            expect(aggregate_maps[@task_id_value]).not_to be_nil
+            expect(aggregate_maps["%{taskid}"].size).to eq(1)
+            expect(aggregate_maps["%{taskid}"][@task_id_value]).not_to be_nil
           end
         end
 
         describe "and the same id of the 'start event'" do
           it "add 'sql_duration' field to the end event and deletes the aggregate map associated to taskid" do
-            expect(aggregate_maps.size).to eq(1)
+            expect(aggregate_maps["%{taskid}"].size).to eq(1)
 
             @update_filter.filter(update_event("taskid" => @task_id_value, "duration" => 2))
 
             end_event = end_event("taskid" => @task_id_value)
             @end_filter.filter(end_event)
 
-            expect(aggregate_maps).to be_empty
+            expect(aggregate_maps["%{taskid}"]).to be_empty
             expect(end_event["sql_duration"]).to eq(2)
           end
 
@@ -117,7 +117,7 @@ describe LogStash::Filters::Aggregate do
     it "works as well as with a string task id" do
       start_event = start_event("taskid" => 124)
       @start_filter.filter(start_event)
-      expect(aggregate_maps.size).to eq(1)
+      expect(aggregate_maps["%{taskid}"].size).to eq(1)
     end
   end
 
@@ -138,25 +138,25 @@ describe LogStash::Filters::Aggregate do
       @task_id_value = "id_123"
       @start_event = start_event({"taskid" => @task_id_value})
       @start_filter.filter(@start_event)
-      expect(aggregate_maps.size).to eq(1)
+      expect(aggregate_maps["%{taskid}"].size).to eq(1)
     end
 
     describe "no timeout defined in none filter" do
       it "defines a default timeout on a default filter" do
-        set_eviction_instance(nil)
-        expect(eviction_instance).to be_nil
+        reset_timeout_management()
+        expect(taskid_eviction_instance).to be_nil
         @end_filter.flush()
-        expect(eviction_instance).to eq(@end_filter)
+        expect(taskid_eviction_instance).to eq(@end_filter)
         expect(@end_filter.timeout).to eq(LogStash::Filters::Aggregate::DEFAULT_TIMEOUT)
       end
     end
 
     describe "timeout is defined on another filter" do
-      it "eviction_instance is not updated" do
-        expect(eviction_instance).not_to be_nil
+      it "taskid eviction_instance is not updated" do
+        expect(taskid_eviction_instance).not_to be_nil
         @start_filter.flush()
-        expect(eviction_instance).not_to eq(@start_filter)
-        expect(eviction_instance).to eq(@end_filter)
+        expect(taskid_eviction_instance).not_to eq(@start_filter)
+        expect(taskid_eviction_instance).to eq(@end_filter)
       end
     end
 
@@ -164,20 +164,20 @@ describe LogStash::Filters::Aggregate do
       it "event is not removed" do
         sleep(2)
         @start_filter.flush()
-        expect(aggregate_maps.size).to eq(1)
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
       end
     end
 
     describe "timeout defined on the filter" do
       it "event is not removed if not expired" do
         entries = @end_filter.flush()
-        expect(aggregate_maps.size).to eq(1)
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
         expect(entries).to be_empty
       end
       it "removes event if expired and creates a new timeout event" do
         sleep(2)
         entries = @end_filter.flush()
-        expect(aggregate_maps).to be_empty
+        expect(aggregate_maps["%{taskid}"]).to be_empty
         expect(entries.size).to eq(1)
         expect(entries[0]['my_id']).to eq("id_123") # task id 
         expect(entries[0]["sql_duration"]).to eq(0) # Aggregation map
@@ -186,21 +186,29 @@ describe LogStash::Filters::Aggregate do
       end
     end
 
+    describe "timeout defined on another filter with another task_id pattern" do
+      it "does not remove event" do
+        another_filter = setup_filter({ "task_id" => "%{another_taskid}", "code" => "", "timeout" => 1 })
+        sleep(2)
+        entries = another_filter.flush()
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
+        expect(entries).to be_empty
+      end
+    end
   end
 
   context "aggregate_maps_path option is defined, " do
     describe "close event append then register event append, " do
       it "stores aggregate maps to configured file and then loads aggregate maps from file" do
-        
         store_file = "aggregate_maps"
         expect(File.exist?(store_file)).to be false
           
         store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
-        expect(aggregate_maps).to be_empty
+        expect(aggregate_maps["%{taskid}"]).to be_empty
 
         start_event = start_event("taskid" => 124)
         filter = store_filter.filter(start_event)
-        expect(aggregate_maps.size).to eq(1)
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
         
         store_filter.close()
         expect(File.exist?(store_file)).to be true
@@ -208,44 +216,49 @@ describe LogStash::Filters::Aggregate do
 
         store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
         expect(File.exist?(store_file)).to be false
-        expect(aggregate_maps.size).to eq(1)
-        
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
       end
     end
 
     describe "when aggregate_maps_path option is defined in 2 instances, " do
       it "raises Logstash::ConfigurationError" do
-
         expect {
           setup_filter({ "code" => "", "aggregate_maps_path" => "aggregate_maps1" })
           setup_filter({ "code" => "", "aggregate_maps_path" => "aggregate_maps2" })
         }.to raise_error(LogStash::ConfigurationError)
-        
       end
     end
   end
   
   context "push_previous_map_as_event option is defined, " do 
+    describe "when push_previous_map_as_event option is activated on another filter with same task_id pattern" do
+      it "should throw a LogStash::ConfigurationError" do
+        expect {
+          setup_filter({"code" => "map['taskid'] = event['taskid']", "push_previous_map_as_event" => true})
+        }.to raise_error(LogStash::ConfigurationError)
+      end
+    end
+    
     describe "when a new task id is detected, " do
       it "should push previous map as new event" do
-        push_filter = setup_filter({ "code" => "map['taskid'] = event['taskid']", "push_previous_map_as_event" => true, "timeout" => 5 })
-        push_filter.filter(event({"taskid" => "1"})) { |yield_event| fail "task 1 shouldn't have yield event" }
-        push_filter.filter(event({"taskid" => "2"})) { |yield_event| expect(yield_event["taskid"]).to eq("1") }
-        expect(aggregate_maps.size).to eq(1)
+        push_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['ppm_id'] = event['ppm_id']", "push_previous_map_as_event" => true, "timeout" => 5 })
+        push_filter.filter(event({"ppm_id" => "1"})) { |yield_event| fail "task 1 shouldn't have yield event" }
+        push_filter.filter(event({"ppm_id" => "2"})) { |yield_event| expect(yield_event["ppm_id"]).to eq("1") }
+        expect(aggregate_maps["%{ppm_id}"].size).to eq(1)
       end
     end
 
     describe "when timeout happens, " do
       it "flush method should return last map as new event" do
-        push_filter = setup_filter({ "code" => "map['taskid'] = event['taskid']", "push_previous_map_as_event" => true, "timeout" => 1, "timeout_code" => "event['test'] = 'testValue'" })
-        push_filter.filter(event({"taskid" => "1"}))
+        push_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['ppm_id'] = event['ppm_id']", "push_previous_map_as_event" => true, "timeout" => 1, "timeout_code" => "event['test'] = 'testValue'" })
+        push_filter.filter(event({"ppm_id" => "1"}))
         sleep(2)
         events_to_flush = push_filter.flush()
         expect(events_to_flush).not_to be_nil
         expect(events_to_flush.size).to eq(1)
-        expect(events_to_flush[0]["taskid"]).to eq("1")
+        expect(events_to_flush[0]["ppm_id"]).to eq("1")
         expect(events_to_flush[0]['test']).to eq("testValue")
-        expect(aggregate_maps.size).to eq(0)
+        expect(aggregate_maps["%{ppm_id}"].size).to eq(0)
       end
     end
   end

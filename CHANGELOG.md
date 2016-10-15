@@ -1,3 +1,9 @@
+## 2.4.0
+ - new feature: You can now define timeout options per task_id pattern (#42)  
+ timeout options are : `timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags`
+ - validation: a configuration error is thrown at startup if you define any timeout option on several aggregate filters for the same task_id pattern
+ - breaking: if you use `aggregate_maps_path` option, storage format has changed. So you have to delete `aggregate_maps_path` file before starting Logstash
+ 
 ## 2.3.1
  - new feature: Add new option "timeout_tags" so that you can add tags to generated timeout events
  
