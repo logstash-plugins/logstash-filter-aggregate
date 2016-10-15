@@ -220,7 +220,8 @@ require "logstash/util/decorators"
 # * after the final event, the map attached to task is deleted
 # * in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
 # * if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
-# * finally, if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
+# * all timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags 
+# * if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 #
 #
 # ==== Use Cases
@@ -252,7 +253,35 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Example value : `"map['sql_duration'] += event['duration']"`
   config :code, :validate => :string, :required => true
 
+  # Tell the filter what to do with aggregate map.
+  #
+  # `create`: create the map, and execute the code only if map wasn't created before
+  #
+  # `update`: doesn't create the map, and execute the code only if map was created before
+  #
+  # `create_or_update`: create the map if it wasn't created before, execute the code in all cases
+  config :map_action, :validate => :string, :default => "create_or_update"
 
+  # Tell the filter that task is ended, and therefore, to delete aggregate map after code execution.  
+  config :end_of_task, :validate => :boolean, :default => false
+
+  # The path to file where aggregate maps are stored when logstash stops
+  # and are loaded from when logstash starts.
+  #
+  # If not defined, aggregate maps will not be stored at logstash stop and will be lost. 
+  # Must be defined in only one aggregate filter (as aggregate maps are global).
+  #
+  # Example value : `"/path/to/.aggregate_maps"`
+  config :aggregate_maps_path, :validate => :string, :required => false
+  
+  # The amount of seconds after a task "end event" can be considered lost.
+  #
+  # When timeout occurs for a task, The task "map" is evicted.
+  #
+  # Timeout can be defined for each "task_id" pattern.
+  #
+  # If no timeout is defined, default timeout will be applied : 1800 seconds.
+  config :timeout, :validate => :number, :required => false
 
   # The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true. 
   # The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map. 
@@ -262,7 +291,16 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Example value: `"event['state'] = 'timeout'"`
   config :timeout_code, :validate => :string, :required => false
 
+  # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
+  # This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
+  config :push_map_as_event_on_timeout, :validate => :boolean, :required => false, :default => false
 
+  # When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
+  # and then creates a new empty map for the next task.
+  #
+  # WARNING: this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...
+  config :push_previous_map_as_event, :validate => :boolean, :required => false, :default => false
+  
   # This option indicates the timeout generated event's field for the "task_id" value. 
   # The task id will then be set into the timeout event. This can help correlate which tasks have been timed out.  
   #
@@ -274,45 +312,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # event[ "my_id" ] = "12345"
   #
   config :timeout_task_id_field, :validate => :string, :required => false
-
-
-  # Tell the filter what to do with aggregate map.
-  #
-  # `create`: create the map, and execute the code only if map wasn't created before
-  #
-  # `update`: doesn't create the map, and execute the code only if map was created before
-  #
-  # `create_or_update`: create the map if it wasn't created before, execute the code in all cases
-  config :map_action, :validate => :string, :default => "create_or_update"
-
-  # Tell the filter that task is ended, and therefore, to delete map after code execution.  
-  config :end_of_task, :validate => :boolean, :default => false
-
-  # The amount of seconds after a task "end event" can be considered lost.
-  #
-  # When timeout occurs for a task, The task "map" is evicted.
-  #
-  # If no timeout is defined, default timeout will be applied : 1800 seconds.
-  config :timeout, :validate => :number, :required => false
-
-  # The path to file where aggregate maps are stored when logstash stops
-  # and are loaded from when logstash starts.
-  #
-  # If not defined, aggregate maps will not be stored at logstash stop and will be lost. 
-  # Must be defined in only one aggregate filter (as aggregate maps are global).
-  #
-  # Example value : `"/path/to/.aggregate_maps"`
-  config :aggregate_maps_path, :validate => :string, :required => false
-  
-  # When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
-  # and then creates a new empty map for the next task.
-  #
-  # WARNING: this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...
-  config :push_previous_map_as_event, :validate => :boolean, :required => false, :default => false
-  
-  # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
-  # This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
-  config :push_map_as_event_on_timeout, :validate => :boolean, :required => false, :default => false
 
   # Defines tags to add when a timeout event is generated and yield
   config :timeout_tags, :validate => :array, :required => false, :default => []
@@ -329,11 +328,15 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Mutex used to synchronize access to 'aggregate_maps'
   @@mutex = Mutex.new
 
-  # Aggregate instance which will evict all zombie Aggregate elements (older than timeout)
-  @@eviction_instance = nil
+  # Default timeout for task_id patterns where timeout is not defined in logstash filter configuration
+  @@default_timeout = nil
 
-  # last time where eviction was launched
-  @@last_eviction_timestamp = nil
+  # For each "task_id" pattern, defines which Aggregate instance will evict all expired Aggregate elements (older than timeout)
+  # For each entry, key is "task_id pattern" and value is "aggregate instance"
+  @@eviction_instance_map = {}
+
+  # last time where eviction was launched, per "task_id" pattern
+  @@last_eviction_timestamp_map = {}
 
   # flag indicating if aggregate_maps_path option has been already set on one aggregate instance
   @@aggregate_maps_path_set = false
@@ -349,49 +352,69 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if @timeout_code
       eval("@timeout_codeblock = lambda { |event| #{@timeout_code} }", binding, "(aggregate filter timeout code)")
     end
-
+    
     @@mutex.synchronize do
-      # define eviction_instance
-      if (!@timeout.nil? && (@@eviction_instance.nil? || @timeout < @@eviction_instance.timeout))
-        @@eviction_instance = self
-        @logger.info("Aggregate, timeout: #{@timeout} seconds")
+      
+      # timeout management : define eviction_instance for current task_id pattern
+      if has_timeout_options?
+        if @@eviction_instance_map.has_key?(@task_id)
+          # all timeout options have to be defined in only one aggregate filter per task_id pattern
+          raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, there are more than one filter which defines timeout options. All timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : #{display_timeout_options}"
+        end
+        @@eviction_instance_map[@task_id] = self
+        @logger.info("Aggregate plugin: timeout for '#{@task_id}' pattern: #{@timeout} seconds")
+        puts "Aggregate plugin: timeout for '#{@task_id}' pattern: #{@timeout} seconds"
+      end
+
+      # timeout management : define default_timeout 
+      if !@timeout.nil? && (@@default_timeout.nil? || @timeout < @@default_timeout)
+        @@default_timeout = @timeout
+        @logger.info("Aggregate plugin: default timeout: #{@timeout} seconds")
+        puts "Aggregate plugin: default timeout: #{@timeout} seconds"
       end
 
       # check if aggregate_maps_path option has already been set on another instance
-      if (!@aggregate_maps_path.nil?)
-        if (@@aggregate_maps_path_set)
+      if !@aggregate_maps_path.nil?
+        if @@aggregate_maps_path_set
           @@aggregate_maps_path_set = false
-          raise LogStash::ConfigurationError, "Option 'aggregate_maps_path' must be set on only one aggregate filter"
+          raise LogStash::ConfigurationError, "Aggregate plugin: Option 'aggregate_maps_path' must be set on only one aggregate filter"
         else
           @@aggregate_maps_path_set = true
         end
       end
       
       # load aggregate maps from file (if option defined)
-      if (!@aggregate_maps_path.nil? && File.exist?(@aggregate_maps_path))
+      if !@aggregate_maps_path.nil? && File.exist?(@aggregate_maps_path)
         File.open(@aggregate_maps_path, "r") { |from_file| @@aggregate_maps = Marshal.load(from_file) }
         File.delete(@aggregate_maps_path)
-        @logger.info("Aggregate, load aggregate maps from : #{@aggregate_maps_path}")
+        @logger.info("Aggregate plugin: load aggregate maps from : #{@aggregate_maps_path}")
       end
+      
+      # init aggregate_maps
+      @@aggregate_maps[@task_id] ||= {}
     end
   end
 
   # Called when logstash stops
   public
   def close
+    puts "DEBUG : close aggregate plugin"
+
+    # store aggregate maps to file (if option defined)
+    @@mutex.synchronize do
+      @@aggregate_maps.delete_if { |key, value| value.empty? }
+      if !@aggregate_maps_path.nil? && !@@aggregate_maps.empty?
+        File.open(@aggregate_maps_path, "w"){ |to_file| Marshal.dump(@@aggregate_maps, to_file) }
+        @logger.info("Aggregate plugin: store aggregate maps to : #{@aggregate_maps_path}")
+      end
+      @@aggregate_maps.clear()
+    end
 
     # Protection against logstash reload
     @@aggregate_maps_path_set = false if @@aggregate_maps_path_set
-    @@eviction_instance = nil unless @@eviction_instance.nil?
-
-    @@mutex.synchronize do
-      # store aggregate maps to file (if option defined)
-      if (!@aggregate_maps_path.nil? && !@@aggregate_maps.empty?)
-        File.open(@aggregate_maps_path, "w"){ |to_file| Marshal.dump(@@aggregate_maps, to_file) }
-        @@aggregate_maps.clear()
-        @logger.info("Aggregate, store aggregate maps to : #{@aggregate_maps_path}")
-      end
-    end
+    @@default_timeout = nil unless @@default_timeout.nil?
+    @@eviction_instance_map = {} unless @@eviction_instance_map.empty?
+    
   end
   
   # This method is invoked each time an event matches the filter
@@ -409,19 +432,19 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     @@mutex.synchronize do
     
       # retrieve the current aggregate map
-      aggregate_maps_element = @@aggregate_maps[task_id]
+      aggregate_maps_element = @@aggregate_maps[@task_id][task_id]
       
 
       # create aggregate map, if it doesn't exist
-      if (aggregate_maps_element.nil?)
+      if aggregate_maps_element.nil?
         return if @map_action == "update"
         # create new event from previous map, if @push_previous_map_as_event is enabled
-        if (@push_previous_map_as_event and !@@aggregate_maps.empty?)
-          previous_map = @@aggregate_maps.shift[1].map
+        if @push_previous_map_as_event && !@@aggregate_maps[@task_id].empty?
+          previous_map = @@aggregate_maps[@task_id].shift[1].map
           event_to_yield = create_timeout_event(previous_map, task_id)
         end
         aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
-        @@aggregate_maps[task_id] = aggregate_maps_element
+        @@aggregate_maps[@task_id][task_id] = aggregate_maps_element
       else
         return if @map_action == "create"
       end
@@ -437,7 +460,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       end
       
       # delete the map if task is ended
-      @@aggregate_maps.delete(task_id) if @end_of_task
+      @@aggregate_maps[@task_id].delete(task_id) if @end_of_task
       
     end
 
@@ -484,15 +507,23 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # This method is invoked by LogStash every 5 seconds.
   def flush(options = {})
     # Protection against no timeout defined by logstash conf : define a default eviction instance with timeout = DEFAULT_TIMEOUT seconds
-    if (@@eviction_instance.nil?)
-      @@eviction_instance = self
-      @timeout = DEFAULT_TIMEOUT
+    if @@default_timeout.nil?
+      @@default_timeout = DEFAULT_TIMEOUT
+      puts "DEBUG : default timeout: #{@timeout} seconds"
+    end
+    if !@@eviction_instance_map.has_key?(@task_id)
+      @@eviction_instance_map[@task_id] = self
+      @timeout = @@default_timeout
+      puts "DEBUG : default instance for pattern #{@task_id} with default timeout: #{@timeout} seconds"
+    elsif @@eviction_instance_map[@task_id].timeout.nil?
+      @@eviction_instance_map[@task_id].timeout = @@default_timeout
     end
     
     # Launch eviction only every interval of (@timeout / 2) seconds
-    if (@@eviction_instance == self && (@@last_eviction_timestamp.nil? || Time.now > @@last_eviction_timestamp + @timeout / 2))
+    if @@eviction_instance_map[@task_id] == self && (!@@last_eviction_timestamp_map.has_key?(@task_id) || Time.now > @@last_eviction_timestamp_map[@task_id] + @timeout / 2)
+      puts "DEBUG : start flush #{@task_id}"
       events_to_flush = remove_expired_maps()
-      @@last_eviction_timestamp = Time.now
+      @@last_eviction_timestamp_map[@task_id] = Time.now
       return events_to_flush
     end
 
@@ -507,9 +538,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     
     @@mutex.synchronize do
 
-      @@aggregate_maps.delete_if do |key, element| 
-        if (element.creation_timestamp < min_timestamp)
-          if (@push_previous_map_as_event) || (@push_map_as_event_on_timeout)
+      @@aggregate_maps[@task_id].delete_if do |key, element| 
+        if element.creation_timestamp < min_timestamp
+          if @push_previous_map_as_event || @push_map_as_event_on_timeout
             events_to_flush << create_timeout_event(element.map, key)
           end
           next true
@@ -519,6 +550,30 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     end
     
     return events_to_flush
+  end
+  
+  # return if this filter instance has any timeout option enabled in logstash configuration
+  def has_timeout_options?()
+    return (
+      timeout ||
+      timeout_code ||
+      push_map_as_event_on_timeout ||
+      push_previous_map_as_event ||
+      timeout_task_id_field ||
+      !timeout_tags.empty?
+    )
+  end
+
+  # display all possible timeout options
+  def display_timeout_options()
+    return [
+      "timeout",
+      "timeout_code",
+      "push_map_as_event_on_timeout",
+      "push_previous_map_as_event",
+      "timeout_task_id_field",
+      "timeout_tags"
+    ].join(", ")
   end
 
 end # class LogStash::Filters::Aggregate

@@ -204,7 +204,9 @@ In that case, you don't want to wait task timeout to flush aggregation map.
 - after the final event, the map attached to task is deleted
 - in one filter configuration, it is recommanded to define a timeout option to protect the filter against unterminated tasks. It tells the filter to delete expired maps
 - if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
-- finally, if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
+- all timeout options have to be defined in only one aggregate filter per task_id pattern.  
+Timeout options are : `timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags`
+- if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 
 ## Use Cases
 - extract some cool metrics from task logs and push them into task final log event (like in example #1 and #2)
@@ -236,13 +238,8 @@ Tell the filter what to do with aggregate map (default :  "create_or_update").
 Default value: `create_or_update`  
 
 - **end_of_task:**  
-Tell the filter that task is ended, and therefore, to delete map after code execution.  
+Tell the filter that task is ended, and therefore, to delete aggregate map after code execution.  
 Default value: `false`  
-
-- **timeout:**  
-The amount of seconds after a task "end event" can be considered lost.  
-When timeout occurs for a task, The task "map" is evicted.  
-If no timeout is defined, default timeout will be applied : 1800 seconds.  
 
 - **aggregate_maps_path:**  
 The path to file where aggregate maps are stored when logstash stops and are loaded from when logstash starts.  
@@ -250,21 +247,28 @@ If not defined, aggregate maps will not be stored at logstash stop and will be l
 Must be defined in only one aggregate filter (as aggregate maps are global).  
 Example value : `"/path/to/.aggregate_maps"`
 
-- **push_previous_map_as_event:**  
-When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
-and then creates a new empty map for the next task.  
-_WARNING:_ this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...  
-Default value: `false`  
-
-- **push_map_as_event_on_timeout**  
-When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
-This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
+- **timeout:**  
+The amount of seconds after a task "end event" can be considered lost.  
+When timeout occurs for a task, The task "map" is evicted.  
+Timeout can be defined for each "task_id" pattern.  
+If no timeout is defined, default timeout will be applied : 1800 seconds.  
 
 - **timeout_code**  
 The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.  
 The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map.  
 If 'timeout_task_id_field' is set, the event is also populated with the task_id value  
 Example value: `"event['state'] = 'timeout'"`
+
+- **push_map_as_event_on_timeout**  
+When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
+This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.  
+Default value: `false`  
+
+- **push_previous_map_as_event:**  
+When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
+and then creates a new empty map for the next task.  
+_WARNING:_ this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...  
+Default value: `false`  
 
 - **timeout_task_id_field**  
 This option indicates the timeout generated event's field for the "task_id" value.  
