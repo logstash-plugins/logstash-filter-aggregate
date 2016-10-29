@@ -35,7 +35,7 @@ otherwise events may be processed out of sequence and unexpected results will oc
          if [logger] == "SQL" {
              aggregate {
                  task_id => "%{taskid}"
-                 code => "map['sql_duration'] += event['duration']"
+                 code => "map['sql_duration'] += event.get('duration')"
                  map_action => "update"
              }
          }
@@ -43,7 +43,7 @@ otherwise events may be processed out of sequence and unexpected results will oc
          if [logger] == "TASK_END" {
              aggregate {
                  task_id => "%{taskid}"
-                 code => "event['sql_duration'] = map['sql_duration']"
+                 code => "event.set('sql_duration', map['sql_duration'])"
                  map_action => "update"
                  end_of_task => true
                  timeout => 120
@@ -81,14 +81,14 @@ the field `sql_duration` is added and contains the sum of all sql queries durati
          if [logger] == "SQL" {
              aggregate {
                  task_id => "%{taskid}"
-                 code => "map['sql_duration'] ||= 0 ; map['sql_duration'] += event['duration']"
+                 code => "map['sql_duration'] ||= 0 ; map['sql_duration'] += event.get('duration')"
              }
          }
      
          if [logger] == "TASK_END" {
              aggregate {
                  task_id => "%{taskid}"
-                 code => "event['sql_duration'] = map['sql_duration']"
+                 code => "event.set('sql_duration', map['sql_duration'])"
                  end_of_task => true
                  timeout => 120
              }
@@ -133,7 +133,7 @@ We can also add 'timeout_task_id_field' so we can correlate the task_id, which i
             timeout_task_id_field => "user_id"
             timeout => 600 # 10 minutes timeout
             timeout_tags => ['_aggregatetimeout']
-            timeout_code => "event['several_clicks'] = (event['clicks'] > 1)"
+            timeout_code => "event.set('several_clicks', event.get('clicks') > 1)"
         }
     }
 ```
@@ -228,7 +228,7 @@ The code to execute to update map, using current event.
 Or on the contrary, the code to execute to update event, using current map.  
 You will have a 'map' variable and an 'event' variable available (that is the event itself).  
 This option is required.  
-Example value : `"map['sql_duration'] += event['duration']"`  
+Example value : `"map['sql_duration'] += event.get('duration')"`  
 
 - **map_action:**  
 Tell the filter what to do with aggregate map (default :  "create_or_update").  
@@ -257,7 +257,7 @@ If no timeout is defined, default timeout will be applied : 1800 seconds.
 The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.  
 The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map.  
 If 'timeout_task_id_field' is set, the event is also populated with the task_id value  
-Example value: `"event['state'] = 'timeout'"`
+Example value: `"event.set('state', 'timeout')"`
 
 - **push_map_as_event_on_timeout**  
 When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
@@ -275,8 +275,7 @@ This option indicates the timeout generated event's field for the "task_id" valu
 The task id will then be set into the timeout event. This can help correlate which tasks have been timed out.  
 This field has no default value and will not be set on the event if not configured.  
 Example:  
-If the task_id is "12345" and this field is set to "my_id", the generated event will have:  
-`event[ "my_id" ] = "12345"`
+If the task_id is "12345" and this field is set to "my_id", the generated timeout event will contain `'my_id'` key with `'12345'` value.
 
 - **timeout_tags**  
 Defines tags to add when a timeout event is generated and yield.  
