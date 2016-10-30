@@ -1,3 +1,7 @@
+## 2.5.0
+ - new feature: add compatibility with Logstash 5
+ - breaking: need Logstash 2.4 or later  
+
 ## 2.4.0
  - new feature: You can now define timeout options per task_id pattern (#42)  
  timeout options are : `timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags`
@@ -27,6 +31,7 @@
 
 ## 2.0.5
  - internal,deps: Depend on logstash-core-plugin-api instead of logstash-core, removing the need to mass update plugins on major releases of logstash
+ - breaking: need Logstash 2.3 or later
 
 ## 2.0.4
  - internal,deps: New dependency requirements for logstash-core for the 5.0 release

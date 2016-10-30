@@ -42,7 +42,7 @@ require "logstash/util/decorators"
 #    if [logger] == "SQL" {
 #      aggregate {
 #        task_id => "%{taskid}"
-#        code => "map['sql_duration'] += event['duration']"
+#        code => "map['sql_duration'] += event.get('duration')"
 #        map_action => "update"
 #      }
 #    }
@@ -50,7 +50,7 @@ require "logstash/util/decorators"
 #    if [logger] == "TASK_END" {
 #      aggregate {
 #        task_id => "%{taskid}"
-#        code => "event['sql_duration'] = map['sql_duration']"
+#        code => "event.set('sql_duration', map['sql_duration'])"
 #        map_action => "update"
 #        end_of_task => true
 #        timeout => 120
@@ -91,14 +91,14 @@ require "logstash/util/decorators"
 #    if [logger] == "SQL" {
 #      aggregate {
 #        task_id => "%{taskid}"
-#        code => "map['sql_duration'] ||= 0 ; map['sql_duration'] += event['duration']"
+#        code => "map['sql_duration'] ||= 0 ; map['sql_duration'] += event.get('duration')"
 #      }
 #    }
 #     
 #    if [logger] == "TASK_END" {
 #      aggregate {
 #        task_id => "%{taskid}"
-#        code => "event['sql_duration'] = map['sql_duration']"
+#        code => "event.set('sql_duration', map['sql_duration'])"
 #        end_of_task => true
 #        timeout => 120
 #      }
@@ -145,7 +145,7 @@ require "logstash/util/decorators"
 #     timeout_task_id_field => "user_id"
 #     timeout => 600 # 10 minutes timeout
 #     timeout_tags => ['_aggregatetimeout']
-#     timeout_code => "event['several_clicks'] = (event['clicks'] > 1)"
+#     timeout_code => "event.set('several_clicks', event.get('clicks') > 1)"
 #   }
 # }
 # ----------------------------------
@@ -250,7 +250,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # You will have a 'map' variable and an 'event' variable available (that is the event itself).
   #
-  # Example value : `"map['sql_duration'] += event['duration']"`
+  # Example value : `"map['sql_duration'] += event.get('duration')"`
   config :code, :validate => :string, :required => true
 
   # Tell the filter what to do with aggregate map.
@@ -288,7 +288,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # If 'timeout_task_id_field' is set, the event is also populated with the task_id value 
   #
-  # Example value: `"event['state'] = 'timeout'"`
+  # Example value: `"event.set('state', 'timeout')"`
   config :timeout_code, :validate => :string, :required => false
 
   # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
@@ -308,9 +308,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # Example:
   #
-  # If the task_id is "12345" and this field is set to "my_id", the generated event will have:
-  # event[ "my_id" ] = "12345"
-  #
+  # If the task_id is "12345" and this field is set to "my_id", the generated timeout event will contain `'my_id'` key with `'12345'` value.
   config :timeout_task_id_field, :validate => :string, :required => false
 
   # Defines tags to add when a timeout event is generated and yield
@@ -362,13 +360,13 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
           raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, there are more than one filter which defines timeout options. All timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : #{display_timeout_options}"
         end
         @@eviction_instance_map[@task_id] = self
-        @logger.info("Aggregate plugin: timeout for '#{@task_id}' pattern: #{@timeout} seconds")
+        @logger.debug("Aggregate timeout for '#{@task_id}' pattern: #{@timeout} seconds")
       end
 
       # timeout management : define default_timeout 
       if !@timeout.nil? && (@@default_timeout.nil? || @timeout < @@default_timeout)
         @@default_timeout = @timeout
-        @logger.info("Aggregate plugin: default timeout: #{@timeout} seconds")
+        @logger.debug("Aggregate default timeout: #{@timeout} seconds")
       end
 
       # check if aggregate_maps_path option has already been set on another instance
@@ -385,7 +383,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       if !@aggregate_maps_path.nil? && File.exist?(@aggregate_maps_path)
         File.open(@aggregate_maps_path, "r") { |from_file| @@aggregate_maps = Marshal.load(from_file) }
         File.delete(@aggregate_maps_path)
-        @logger.info("Aggregate plugin: load aggregate maps from : #{@aggregate_maps_path}")
+        @logger.info("Aggregate maps loaded from : #{@aggregate_maps_path}")
       end
       
       # init aggregate_maps
@@ -402,7 +400,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @@aggregate_maps.delete_if { |key, value| value.empty? }
       if !@aggregate_maps_path.nil? && !@@aggregate_maps.empty?
         File.open(@aggregate_maps_path, "w"){ |to_file| Marshal.dump(@@aggregate_maps, to_file) }
-        @logger.info("Aggregate plugin: store aggregate maps to : #{@aggregate_maps_path}")
+        @logger.info("Aggregate maps stored to : #{@aggregate_maps_path}")
       end
       @@aggregate_maps.clear()
     end
@@ -452,7 +450,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         @codeblock.call(event, map)
         noError = true
       rescue => exception
-        @logger.error("Aggregate exception occurred. Error: #{exception} ; Code: #{@code} ; Map: #{map} ; EventData: #{event.instance_variable_get('@data')}")
+        @logger.error("Aggregate exception occurred", 
+                      :error => exception,
+                      :code => @code,
+                      :map => map,
+                      :event_data => event.to_hash_with_metadata)
         event.tag("_aggregateexception")
       end
       
@@ -478,17 +480,20 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     event_to_yield = LogStash::Event.new(aggregation_map)        
 
     if @timeout_task_id_field
-      event_to_yield[@timeout_task_id_field] = task_id
+      event_to_yield.set(@timeout_task_id_field, task_id)
     end
     
-    LogStash::Util::Decorators.add_tags(@timeout_tags,event_to_yield,"filters/#{self.class.name}")
+    LogStash::Util::Decorators.add_tags(@timeout_tags, event_to_yield, "filters/#{self.class.name}")
 
     # Call code block if available
     if @timeout_code
       begin
         @timeout_codeblock.call(event_to_yield)
       rescue => exception
-        @logger.error("Aggregate exception occurred. Error: #{exception} ; TimeoutCode: #{@timeout_code} ; TimeoutEventData: #{event_to_yield.instance_variable_get('@data')}")
+        @logger.error("Aggregate exception occurred", 
+                      :error => exception,
+                      :timeout_code => @timeout_code,
+                      :timeout_event_data => event_to_yield.to_hash_with_metadata)
         event_to_yield.tag("_aggregateexception")
       end
     end

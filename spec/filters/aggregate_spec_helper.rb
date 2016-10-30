@@ -2,8 +2,6 @@
 require "logstash/filters/aggregate"
 
 def event(data = {})
-	data["message"] ||= "Log message"
-	data["@timestamp"] ||= Time.now
 	LogStash::Event.new(data)
 end
 
