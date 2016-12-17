@@ -179,7 +179,7 @@ In that case, you don't want to wait task timeout to flush aggregation map.
                 map['town_name'] ||= []
                 event.to_hash.each do |key,value|
                     map[key] = value unless map.has_key?(key)
-                    map[key] << value if map[key].is_a?(Array)
+                    map[key] << value if map[key].is_a?(Array) and !value.is_a?(Array)
                 end
              "
              push_previous_map_as_event => true
