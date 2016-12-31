@@ -343,6 +343,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Initialize plugin
   public
   def register
+    
+    @logger.debug("Aggregate register call", :code => @code)
+
     # process lambda expression to call in each filter call
     eval("@codeblock = lambda { |event, map| #{@code} }", binding, "(aggregate filter code)")
 
@@ -394,6 +397,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Called when logstash stops
   public
   def close
+    
+    @logger.debug("Aggregate close call", :code => @code)
 
     # store aggregate maps to file (if option defined)
     @@mutex.synchronize do
@@ -450,6 +455,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       # execute the code to read/update map and event
       begin
         @codeblock.call(event, map)
+        @logger.debug("Aggregate successful filter code execution", :code => @code)
         noError = true
       rescue => exception
         @logger.error("Aggregate exception occurred", 
@@ -479,6 +485,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #  if @timeout_code is set, it will execute the timeout code on the created timeout event
   # returns the newly created event
   def create_timeout_event(aggregation_map, task_id)
+
+    @logger.debug("Aggregate create_timeout_event call with task_id '#{task_id}'")
+    
     event_to_yield = LogStash::Event.new(aggregation_map)        
 
     if @timeout_task_id_field
@@ -510,6 +519,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   
   # This method is invoked by LogStash every 5 seconds.
   def flush(options = {})
+    
+    @logger.debug("Aggregate flush call with #{options}")
+      
     # Protection against no timeout defined by logstash conf : define a default eviction instance with timeout = DEFAULT_TIMEOUT seconds
     if @@default_timeout.nil?
       @@default_timeout = DEFAULT_TIMEOUT
@@ -538,6 +550,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     min_timestamp = Time.now - @timeout
     
     @@mutex.synchronize do
+
+      @logger.debug("Aggregate remove_expired_maps call with '#{@task_id}' pattern and #{@@aggregate_maps[@task_id].length} maps")
 
       @@aggregate_maps[@task_id].delete_if do |key, element| 
         if element.creation_timestamp < min_timestamp
