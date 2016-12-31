@@ -243,9 +243,9 @@ describe LogStash::Filters::Aggregate do
     
     describe "when a new task id is detected, " do
       it "should push previous map as new event" do
-        push_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['ppm_id'] = event.get('ppm_id')", "push_previous_map_as_event" => true, "timeout" => 5 })
+        push_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['ppm_id'] = event.get('ppm_id')", "push_previous_map_as_event" => true, "timeout" => 5, "timeout_task_id_field" => "timeout_task_id_field" })
         push_filter.filter(event({"ppm_id" => "1"})) { |yield_event| fail "task 1 shouldn't have yield event" }
-        push_filter.filter(event({"ppm_id" => "2"})) { |yield_event| expect(yield_event.get("ppm_id")).to eq("1") }
+        push_filter.filter(event({"ppm_id" => "2"})) { |yield_event| expect(yield_event.get("ppm_id")).to eq("1") ; expect(yield_event.get("timeout_task_id_field")).to eq("1") }
         expect(aggregate_maps["%{ppm_id}"].size).to eq(1)
       end
     end

@@ -435,8 +435,10 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         return if @map_action == "update"
         # create new event from previous map, if @push_previous_map_as_event is enabled
         if @push_previous_map_as_event && !@@aggregate_maps[@task_id].empty?
-          previous_map = @@aggregate_maps[@task_id].shift[1].map
-          event_to_yield = create_timeout_event(previous_map, task_id)
+          previous_entry = @@aggregate_maps[@task_id].shift()
+          previous_task_id = previous_entry[0]
+          previous_map = previous_entry[1].map
+          event_to_yield = create_timeout_event(previous_map, previous_task_id)
         end
         aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
         @@aggregate_maps[@task_id][task_id] = aggregate_maps_element
