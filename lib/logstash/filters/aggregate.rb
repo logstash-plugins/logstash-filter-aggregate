@@ -440,10 +440,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         return if @map_action == "update"
         # create new event from previous map, if @push_previous_map_as_event is enabled
         if @push_previous_map_as_event && !@@aggregate_maps[@task_id].empty?
-          previous_entry = @@aggregate_maps[@task_id].shift()
-          previous_task_id = previous_entry[0]
-          previous_map = previous_entry[1].map
-          event_to_yield = create_timeout_event(previous_map, previous_task_id)
+          event_to_yield = extract_previous_map_as_event()
         end
         aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
         @@aggregate_maps[@task_id][task_id] = aggregate_maps_element
@@ -512,6 +509,14 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     return event_to_yield
   end 
 
+  # Extract the previous map in aggregate maps, and return it as a new Logstash event
+  def extract_previous_map_as_event
+    previous_entry = @@aggregate_maps[@task_id].shift()
+    previous_task_id = previous_entry[0]
+    previous_map = previous_entry[1].map
+    return create_timeout_event(previous_map, previous_task_id)
+  end
+
   # Necessary to indicate logstash to periodically call 'flush' method
   def periodic_flush
     true
@@ -533,11 +538,19 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @@eviction_instance_map[@task_id].timeout = @@default_timeout
     end
     
-    # Launch eviction only every interval of (@timeout / 2) seconds
-    if @@eviction_instance_map[@task_id] == self && (!@@last_eviction_timestamp_map.has_key?(@task_id) || Time.now > @@last_eviction_timestamp_map[@task_id] + @timeout / 2)
+    # Launch eviction only every interval of (@timeout / 2) seconds or at Logstash shutdown
+    if @@eviction_instance_map[@task_id] == self && (!@@last_eviction_timestamp_map.has_key?(@task_id) || Time.now > @@last_eviction_timestamp_map[@task_id] + @timeout / 2 || options[:final])
       events_to_flush = remove_expired_maps()
+
+      # at Logstash shutdown, if push_previous_map_as_event is enabled, it's important to force flush (particularly for jdbc input plugin)
+      if options[:final] && @push_previous_map_as_event && !@@aggregate_maps[@task_id].empty?
+        events_to_flush << extract_previous_map_as_event()
+      end
+      
       @@last_eviction_timestamp_map[@task_id] = Time.now
       return events_to_flush
+    else
+      return []
     end
 
   end
