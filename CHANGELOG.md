@@ -1,3 +1,11 @@
+## 2.5.1
+- enhancement: when final flush occurs (just before Logstash shutdown), add `_aggregatefinalflush` tag on generated timeout events 
+- bugfix: when final flush occurs (just before Logstash shutdown), push last aggregate map as event (if push_previous_map_as_event=true)
+- bugfix: fix 'timeout_task_id_field' feature when push_previous_map_as_event=true
+- bugfix: fix aggregate_maps_path feature (bug since v2.4.0)
+- internal: add debug logging
+- internal: refactor flush management static variables
+
 ## 2.5.0
  - new feature: add compatibility with Logstash 5
  - breaking: need Logstash 2.4 or later  
