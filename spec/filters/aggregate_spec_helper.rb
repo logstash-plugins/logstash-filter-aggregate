@@ -41,7 +41,23 @@ def taskid_eviction_instance()
 	LogStash::Filters::Aggregate.class_variable_get(:@@eviction_instance_map)["%{taskid}"]
 end
 
+def static_close_instance()
+  LogStash::Filters::Aggregate.class_variable_get(:@@static_close_instance)
+end
+
+def aggregate_maps_path_set()
+  LogStash::Filters::Aggregate.class_variable_get(:@@aggregate_maps_path_set)
+end
+
 def reset_timeout_management()
 	LogStash::Filters::Aggregate.class_variable_set(:@@default_timeout, nil)
   LogStash::Filters::Aggregate.class_variable_get(:@@eviction_instance_map).clear()
+  LogStash::Filters::Aggregate.class_variable_get(:@@last_eviction_timestamp_map).clear()
+end
+
+def reset_static_variables()
+  reset_timeout_management()
+  aggregate_maps().clear()
+  LogStash::Filters::Aggregate.class_variable_set(:@@static_close_instance, nil)
+  LogStash::Filters::Aggregate.class_variable_set(:@@aggregate_maps_path_set, false)
 end
