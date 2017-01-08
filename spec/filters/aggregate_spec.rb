@@ -6,8 +6,7 @@ require_relative "aggregate_spec_helper"
 describe LogStash::Filters::Aggregate do
 
   before(:each) do
-    reset_timeout_management()
-    aggregate_maps.clear()
+    reset_static_variables()
     @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
     @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event.get('duration')" })
     @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.set('sql_duration', map['sql_duration'])", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event.set('test', 'testValue')", "timeout_tags" => ["tag1", "tag2"] })
@@ -212,6 +211,9 @@ describe LogStash::Filters::Aggregate do
         filter = store_filter.filter(start_event)
         expect(aggregate_maps["%{taskid}"].size).to eq(1)
         
+        @end_filter.close()
+        expect(aggregate_maps).not_to be_empty
+        
         store_filter.close()
         expect(File.exist?(store_file)).to be true
         expect(aggregate_maps).to be_empty
@@ -232,6 +234,21 @@ describe LogStash::Filters::Aggregate do
     end
   end
   
+  context "Logstash reload occurs, " do
+    describe "close method is called, " do
+      it "reinitializes static variables" do
+        @end_filter.close()
+        expect(aggregate_maps).to be_empty
+        expect(taskid_eviction_instance).to be_nil
+        expect(static_close_instance).not_to be_nil
+        expect(aggregate_maps_path_set).to be false
+        
+        @end_filter.register()
+        expect(static_close_instance).to be_nil
+      end
+    end
+  end
+
   context "push_previous_map_as_event option is defined, " do 
     describe "when push_previous_map_as_event option is activated on another filter with same task_id pattern" do
       it "should throw a LogStash::ConfigurationError" do

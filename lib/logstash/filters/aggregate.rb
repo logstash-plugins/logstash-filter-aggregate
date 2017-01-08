@@ -313,12 +313,14 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # Defines tags to add when a timeout event is generated and yield
   config :timeout_tags, :validate => :array, :required => false, :default => []
-  
 
+      
+  # STATIC VARIABLES
+
+        
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
 
-  
   # This is the state of the filter.
   # For each entry, key is "task_id" and value is a map freely updatable by 'code' config
   @@aggregate_maps = {}
@@ -338,6 +340,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # flag indicating if aggregate_maps_path option has been already set on one aggregate instance
   @@aggregate_maps_path_set = false
+
+  # defines which Aggregate instance will close Aggregate static variables
+  @@static_close_instance = nil
 
   
   # Initialize plugin
@@ -372,13 +377,19 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         @logger.debug("Aggregate default timeout: #{@timeout} seconds")
       end
 
-      # check if aggregate_maps_path option has already been set on another instance
+      # reinit static_close_instance (if necessary)
+      if !@@aggregate_maps_path_set && !@@static_close_instance.nil?
+        @@static_close_instance = nil
+      end
+
+      # check if aggregate_maps_path option has already been set on another instance else set @@aggregate_maps_path_set
       if !@aggregate_maps_path.nil?
         if @@aggregate_maps_path_set
           @@aggregate_maps_path_set = false
           raise LogStash::ConfigurationError, "Aggregate plugin: Option 'aggregate_maps_path' must be set on only one aggregate filter"
         else
           @@aggregate_maps_path_set = true
+          @@static_close_instance = self
         end
       end
       
@@ -400,20 +411,26 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     
     @logger.debug("Aggregate close call", :code => @code)
 
-    # store aggregate maps to file (if option defined)
-    @@mutex.synchronize do
-      @@aggregate_maps.delete_if { |key, value| value.empty? }
-      if !@aggregate_maps_path.nil? && !@@aggregate_maps.empty?
-        File.open(@aggregate_maps_path, "w"){ |to_file| Marshal.dump(@@aggregate_maps, to_file) }
-        @logger.info("Aggregate maps stored to : #{@aggregate_maps_path}")
-      end
-      @@aggregate_maps.clear()
-    end
+    # define static close instance if none is already defined    
+    @@static_close_instance = self if @@static_close_instance.nil?
 
-    # Protection against logstash reload
-    @@aggregate_maps_path_set = false if @@aggregate_maps_path_set
-    @@default_timeout = nil unless @@default_timeout.nil?
-    @@eviction_instance_map = {} unless @@eviction_instance_map.empty?
+    if @@static_close_instance == self
+      # store aggregate maps to file (if option defined)
+      @@mutex.synchronize do
+        @@aggregate_maps.delete_if { |key, value| value.empty? }
+        if !@aggregate_maps_path.nil? && !@@aggregate_maps.empty?
+          File.open(@aggregate_maps_path, "w"){ |to_file| Marshal.dump(@@aggregate_maps, to_file) }
+          @logger.info("Aggregate maps stored to : #{@aggregate_maps_path}")
+        end
+        @@aggregate_maps.clear()
+      end
+  
+      # reinit static variables for logstash reload
+      @@default_timeout = nil
+      @@eviction_instance_map = {}
+      @@last_eviction_timestamp_map = {}
+      @@aggregate_maps_path_set = false
+    end
     
   end
   
