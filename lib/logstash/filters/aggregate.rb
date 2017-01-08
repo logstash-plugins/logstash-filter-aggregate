@@ -331,12 +331,12 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Default timeout for task_id patterns where timeout is not defined in logstash filter configuration
   @@default_timeout = nil
 
-  # For each "task_id" pattern, defines which Aggregate instance will evict all expired Aggregate elements (older than timeout)
+  # For each "task_id" pattern, defines which Aggregate instance will process flush() call, processing expired Aggregate elements (older than timeout)
   # For each entry, key is "task_id pattern" and value is "aggregate instance"
-  @@eviction_instance_map = {}
+  @@flush_instance_map = {}
 
-  # last time where eviction was launched, per "task_id" pattern
-  @@last_eviction_timestamp_map = {}
+  # last time where timeout management in flush() method was launched, per "task_id" pattern
+  @@last_flush_timestamp_map = {}
 
   # flag indicating if aggregate_maps_path option has been already set on one aggregate instance
   @@aggregate_maps_path_set = false
@@ -363,11 +363,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       
       # timeout management : define eviction_instance for current task_id pattern
       if has_timeout_options?
-        if @@eviction_instance_map.has_key?(@task_id)
+        if @@flush_instance_map.has_key?(@task_id)
           # all timeout options have to be defined in only one aggregate filter per task_id pattern
           raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, there are more than one filter which defines timeout options. All timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : #{display_timeout_options}"
         end
-        @@eviction_instance_map[@task_id] = self
+        @@flush_instance_map[@task_id] = self
         @logger.debug("Aggregate timeout for '#{@task_id}' pattern: #{@timeout} seconds")
       end
 
@@ -427,8 +427,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   
       # reinit static variables for logstash reload
       @@default_timeout = nil
-      @@eviction_instance_map = {}
-      @@last_eviction_timestamp_map = {}
+      @@flush_instance_map = {}
+      @@last_flush_timestamp_map = {}
       @@aggregate_maps_path_set = false
     end
     
@@ -548,15 +548,15 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if @@default_timeout.nil?
       @@default_timeout = DEFAULT_TIMEOUT
     end
-    if !@@eviction_instance_map.has_key?(@task_id)
-      @@eviction_instance_map[@task_id] = self
+    if !@@flush_instance_map.has_key?(@task_id)
+      @@flush_instance_map[@task_id] = self
       @timeout = @@default_timeout
-    elsif @@eviction_instance_map[@task_id].timeout.nil?
-      @@eviction_instance_map[@task_id].timeout = @@default_timeout
+    elsif @@flush_instance_map[@task_id].timeout.nil?
+      @@flush_instance_map[@task_id].timeout = @@default_timeout
     end
     
-    # Launch eviction only every interval of (@timeout / 2) seconds or at Logstash shutdown
-    if @@eviction_instance_map[@task_id] == self && (!@@last_eviction_timestamp_map.has_key?(@task_id) || Time.now > @@last_eviction_timestamp_map[@task_id] + @timeout / 2 || options[:final])
+    # Launch timeout management only every interval of (@timeout / 2) seconds or at Logstash shutdown
+    if @@flush_instance_map[@task_id] == self && (!@@last_flush_timestamp_map.has_key?(@task_id) || Time.now > @@last_flush_timestamp_map[@task_id] + @timeout / 2 || options[:final])
       events_to_flush = remove_expired_maps()
 
       # at Logstash shutdown, if push_previous_map_as_event is enabled, it's important to force flush (particularly for jdbc input plugin)
@@ -564,7 +564,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         events_to_flush << extract_previous_map_as_event()
       end
       
-      @@last_eviction_timestamp_map[@task_id] = Time.now
+      @@last_flush_timestamp_map[@task_id] = Time.now
       return events_to_flush
     else
       return []
