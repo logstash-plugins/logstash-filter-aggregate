@@ -563,8 +563,16 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       if options[:final] && @push_previous_map_as_event && !@@aggregate_maps[@task_id].empty?
         events_to_flush << extract_previous_map_as_event()
       end
+
+      # tag flushed events, indicating "final flush" special event
+      if options[:final]
+        events_to_flush.each { |event_to_flush| event_to_flush.tag("_aggregatefinalflush") }
+      end
       
+      # update last flush timestamp
       @@last_flush_timestamp_map[@task_id] = Time.now
+        
+      # return events to flush into Logstash pipeline
       return events_to_flush
     else
       return []

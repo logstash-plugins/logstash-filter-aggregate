@@ -291,6 +291,7 @@ describe LogStash::Filters::Aggregate do
         events_to_flush = push_filter.flush({:final=>true})
         expect(events_to_flush).not_to be_nil
         expect(events_to_flush.size).to eq(1)
+        expect(events_to_flush[0].get("tags")).to eq(["_aggregatefinalflush"])
         expect(aggregate_maps["%{ppm_id}"].size).to eq(0)
       end
     end
