@@ -9,7 +9,7 @@ require "logstash/util/decorators"
 # The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task,
 # and finally push aggregated information into final task event.
 #
-# You should be very careful to set logstash filter workers to 1 (`-w 1` flag) for this filter to work correctly 
+# You should be very careful to set Logstash filter workers to 1 (`-w 1` flag) for this filter to work correctly 
 # otherwise events may be processed out of sequence and unexpected results will occur.
 # 
 # ==== Example #1
@@ -207,7 +207,7 @@ require "logstash/util/decorators"
 #      }
 #    }
 # ----------------------------------
-# * The key point is that each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
+# * The key point is that each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new Logstash event (with 'aggregated' tag), and then creates a new empty map for the next country
 # * When 5s timeout comes, the last aggregate map is pushed as a new event
 # * Finally, initial events (which are not aggregated) are dropped because useless
 # 
@@ -239,7 +239,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # The expression defining task ID to correlate logs.
   #
-  # This value must uniquely identify the task in the system.
+  # This value must uniquely identify the task.
   #
   # Example value : "%{application}%{my_task_id}"
   config :task_id, :validate => :string, :required => true
@@ -265,10 +265,10 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Tell the filter that task is ended, and therefore, to delete aggregate map after code execution.  
   config :end_of_task, :validate => :boolean, :default => false
 
-  # The path to file where aggregate maps are stored when logstash stops
-  # and are loaded from when logstash starts.
+  # The path to file where aggregate maps are stored when Logstash stops
+  # and are loaded from when Logstash starts.
   #
-  # If not defined, aggregate maps will not be stored at logstash stop and will be lost. 
+  # If not defined, aggregate maps will not be stored at Logstash stop and will be lost. 
   # Must be defined in only one aggregate filter (as aggregate maps are global).
   #
   # Example value : `"/path/to/.aggregate_maps"`
@@ -291,11 +291,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Example value: `"event.set('state', 'timeout')"`
   config :timeout_code, :validate => :string, :required => false
 
-  # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new logstash event.  
-  # This enables to detect and process task timeouts in logstash, but also to manage tasks that have no explicit end event.
+  # When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new Logstash event.  
+  # This enables to detect and process task timeouts in Logstash, but also to manage tasks that have no explicit end event.
   config :push_map_as_event_on_timeout, :validate => :boolean, :required => false, :default => false
 
-  # When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new logstash event, 
+  # When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new Logstash event, 
   # and then creates a new empty map for the next task.
   #
   # WARNING: this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...
@@ -328,7 +328,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # Mutex used to synchronize access to 'aggregate_maps'
   @@mutex = Mutex.new
 
-  # Default timeout for task_id patterns where timeout is not defined in logstash filter configuration
+  # Default timeout for task_id patterns where timeout is not defined in Logstash filter configuration
   @@default_timeout = nil
 
   # For each "task_id" pattern, defines which Aggregate instance will process flush() call, processing expired Aggregate elements (older than timeout)
@@ -405,7 +405,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     end
   end
 
-  # Called when logstash stops
+  # Called when Logstash stops
   public
   def close
     
@@ -425,7 +425,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         @@aggregate_maps.clear()
       end
   
-      # reinit static variables for logstash reload
+      # reinit static variables for Logstash reload
       @@default_timeout = nil
       @@flush_instance_map = {}
       @@last_flush_timestamp_map = {}
@@ -534,7 +534,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     return create_timeout_event(previous_map, previous_task_id)
   end
 
-  # Necessary to indicate logstash to periodically call 'flush' method
+  # Necessary to indicate Logstash to periodically call 'flush' method
   def periodic_flush
     true
   end
@@ -544,7 +544,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     
     @logger.debug("Aggregate flush call with #{options}")
       
-    # Protection against no timeout defined by logstash conf : define a default eviction instance with timeout = DEFAULT_TIMEOUT seconds
+    # Protection against no timeout defined by Logstash conf : define a default eviction instance with timeout = DEFAULT_TIMEOUT seconds
     if @@default_timeout.nil?
       @@default_timeout = DEFAULT_TIMEOUT
     end
@@ -605,7 +605,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     return events_to_flush
   end
   
-  # return if this filter instance has any timeout option enabled in logstash configuration
+  # return if this filter instance has any timeout option enabled in Logstash configuration
   def has_timeout_options?()
     return (
       timeout ||
