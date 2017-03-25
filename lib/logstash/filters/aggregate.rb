@@ -389,6 +389,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     
     @logger.debug("Aggregate register call", :code => @code)
 
+    # validate task_id option
+    if !@task_id.match(/%\{.+\}/)
+      raise LogStash::ConfigurationError, "Aggregate plugin: task_id pattern '#{@task_id}' must contain a dynamic expression like '%{field}'"
+    end
+    
     # process lambda expression to call in each filter call
     eval("@codeblock = lambda { |event, map| #{@code} }", binding, "(aggregate filter code)")
 
@@ -403,7 +408,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       if has_timeout_options?
         if @@flush_instance_map.has_key?(@task_id)
           # all timeout options have to be defined in only one aggregate filter per task_id pattern
-          raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, there are more than one filter which defines timeout options. All timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : #{display_timeout_options}"
+          raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern '#{@task_id}', there are more than one filter which defines timeout options. All timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : #{display_timeout_options}"
         end
         @@flush_instance_map[@task_id] = self
         @logger.debug("Aggregate timeout for '#{@task_id}' pattern: #{@timeout} seconds")

@@ -12,6 +12,16 @@ describe LogStash::Filters::Aggregate do
     @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.set('sql_duration', map['sql_duration'])", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event.set('test', 'testValue')", "timeout_tags" => ["tag1", "tag2"] })
   end
 
+  context "Validation" do
+    describe "and register a filter with a task_id without dynamic expression" do
+      it "raises a LogStash::ConfigurationError" do
+        expect {
+          setup_filter({ "code" => "", "task_id" => "static_value" })
+        }.to raise_error(LogStash::ConfigurationError)
+      end
+    end
+  end
+      
   context "Start event" do
     describe "and receiving an event without task_id" do
       it "does not record it" do
