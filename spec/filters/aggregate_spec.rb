@@ -204,7 +204,9 @@ describe LogStash::Filters::Aggregate do
         store_file = "aggregate_maps"
         expect(File.exist?(store_file)).to be false
           
+        one_filter = setup_filter({ "task_id" => "%{one_special_field}", "code" => ""})
         store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
+        expect(aggregate_maps["%{one_special_field}"]).to be_empty
         expect(aggregate_maps["%{taskid}"]).to be_empty
 
         start_event = start_event("taskid" => 124)
@@ -218,8 +220,10 @@ describe LogStash::Filters::Aggregate do
         expect(File.exist?(store_file)).to be true
         expect(aggregate_maps).to be_empty
 
+        one_filter = setup_filter({ "task_id" => "%{one_special_field}", "code" => ""})
         store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
         expect(File.exist?(store_file)).to be false
+        expect(aggregate_maps["%{one_special_field}"]).to be_empty
         expect(aggregate_maps["%{taskid}"].size).to eq(1)
       end
     end
