@@ -433,7 +433,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       
       # load aggregate maps from file (if option defined)
       if !@aggregate_maps_path.nil? && File.exist?(@aggregate_maps_path)
-        File.open(@aggregate_maps_path, "r") { |from_file| @@aggregate_maps = Marshal.load(from_file) }
+        File.open(@aggregate_maps_path, "r") { |from_file| @@aggregate_maps.merge!(Marshal.load(from_file)) }
         File.delete(@aggregate_maps_path)
         @logger.info("Aggregate maps loaded from : #{@aggregate_maps_path}")
       end
