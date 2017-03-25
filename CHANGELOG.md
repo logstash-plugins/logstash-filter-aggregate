@@ -1,3 +1,9 @@
+## 2.5.2
+- bugfix: fix 'aggregate_maps_path' load (issue #62). Re-start of Logstash died when no data were provided in 'aggregate_maps_path' file for some aggregate task_id patterns
+- enhancement: at Logstash startup, check that 'task_id' option contains a field reference expression (else raise error)
+- docs: enhance examples
+- docs: precise that tasks are tied to their task_id pattern, even if they have same task_id value
+
 ## 2.5.1
 - enhancement: when final flush occurs (just before Logstash shutdown), add `_aggregatefinalflush` tag on generated timeout events 
 - bugfix: when final flush occurs (just before Logstash shutdown), push last aggregate map as event (if push_previous_map_as_event=true)
