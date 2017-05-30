@@ -208,13 +208,13 @@ require "logstash/util/decorators"
 #
 # ==== Example #5 : no end event and push events as soon as possible
 #
-# Fifth use case: like example #3, there is no end event. Events keep comming for an idefinite time and you want to push the aggregation map as soon as possbile after the last user interaction without waiting for the `timeout`. This allows to have the aggregated events pushed closer to real time.
+# Fifth use case: like example #3, there is no end event. Events keep comming for an indefinite time and you want to push the aggregation map as soon as possible after the last user interaction without waiting for the `timeout`. This allows to have the aggregated events pushed closer to real time.
 #
 # A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction. The user ineraction will be considered as ended when no events for the specified user (task_id) arrive afer the specified inactivity_timeout`.
 #
-# If the user keeps interacting for longer than `timeout` the aggration map will be pushed at timoeout.
+# If the user continues interacting for longer than timeout seconds (since first event), the aggregation map will still be deleted and pushed as a new event when timeout occurs.
 #
-# The difference with example #3 is that the events will be pushed as soon as the user stops interacting for `inactivity_timeout` seconds instead of waiting for the end of `timeout seconds.`
+# The difference with example #3 is that the events will be pushed as soon as the user stops interacting for `inactivity_timeout` seconds instead of waiting for the end of `timeout` seconds since first event.
 #
 # In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when a timeout occurs.
 # In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
@@ -243,8 +243,8 @@ require "logstash/util/decorators"
 #     code => "map['clicks'] ||= 0; map['clicks'] += 1;"
 #     push_map_as_event_on_timeout => true
 #     timeout_task_id_field => "user_id"
-#     timeout => 3600 # 1 hour timeout, user acivity will be considered finished one hour after the first event, event if events keep comming
-#     inactivity_timeout => 300 # 5 minutes timoeout, user activity will be considered finished if no new events arrive 5 minutes after the previous event
+#     timeout => 3600 # 1 hour timeout, user acivity will be considered finished one hour after the first event, even if events keep comming
+#     inactivity_timeout => 300 # 5 minutes timeout, user activity will be considered finished if no new events arrive 5 minutes after the last event
 #     timeout_tags => ['_aggregatetimeout']
 #     timeout_code => "event.set('several_clicks', event.get('clicks') > 1)"
 #   }
@@ -275,7 +275,7 @@ require "logstash/util/decorators"
 # * an aggregate map is tied to one task_id value which is tied to one task_id pattern. So if you have 2 filters with different task_id patterns, even if you have same task_id value, they won't share the same aggregate map.
 # * in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
 # * if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
-# * all timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags
+# * all timeout options have to be defined in only one aggregate filter per task_id pattern. Timeout options are : timeout, inactivity_timeout,timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags
 # * if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 #
 #
@@ -366,11 +366,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #
   # When inactivity_timeout occurs for a task, The task "map" is evicted.
   #
-  # Inactivity Timeout can be defined for each "task_id" pattern.
+  # `inactivity_timeout` can be defined for each "task_id" pattern.
   #
-  # Inactivity Timeout must be lower than `timeout`
+  # `inactivity_timeout` must be lower than `timeout`
   #
-  # If no inactivity_timeout is defined, no inactivity timoeout will be applied (only Timeout will be applied).
+  # If no inactivity_timeout is defined, no inactivity timeout will be applied (only timeout will be applied).
   config :inactivity_timeout, :validate => :number, :required => false
 
   # The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.
@@ -442,9 +442,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # last time where timeout management in flush() method was launched, per "task_id" pattern
   @@last_flush_timestamp_map = {}
 
-  # last time when inactivity timeout management in flush method was launched
-  @@last_flush_inactivity_timeout_timestamp = nil
-
   # flag indicating if aggregate_maps_path option has been already set on one aggregate instance
   @@aggregate_maps_path_set = false
 
@@ -494,7 +491,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         @logger.debug("Aggregate default timeout: #{@timeout} seconds")
       end
 
-      # inactivity timeout managemnet: make sure it is lower than timeout
+      # inactivity timeout management: make sure it is lower than timeout
       if !@inactivity_timeout.nil? && ((!@timeout.nil? && @inactivity_timeout > @timeout) || (!@@default_timeout.nil? && @inactivity_timeout > @@default_timeout))
         raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, inactivity_timeout must be lower than timeout"
       end
@@ -678,16 +675,13 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @@flush_instance_map[@task_id].timeout = @@default_timeout
     end
 
-    events_to_flush = []
-    # handle inactivity timeout if set and only every @inactivity_timeout / 2 seconds
-    if !@inactivity_timeout.nil? && (@@last_flush_inactivity_timeout_timestamp.nil? || Time.now > @@last_flush_inactivity_timeout_timestamp + @inactivity_timeout / 2)
-      events_to_flush = remove_inactive_maps()
-      @@last_flush_inactivity_timeout_timestamp = Time.now
+    if @@flush_instance_map[@task_id].inactivity_timeout.nil?
+      @@flush_instance_map[@task_id].inactivity_timeout = @@flush_instance_map[@task_id].timeout
     end
 
     # Launch timeout management only every interval of (@timeout / 2) seconds or at Logstash shutdown
-    if @@flush_instance_map[@task_id] == self && (!@@last_flush_timestamp_map.has_key?(@task_id) || Time.now > @@last_flush_timestamp_map[@task_id] + @timeout / 2 || options[:final])
-      events_to_flush.concat remove_expired_maps()
+    if @@flush_instance_map[@task_id] == self && (!@@last_flush_timestamp_map.has_key?(@task_id) || Time.now > @@last_flush_timestamp_map[@task_id] + @inactivity_timeout / 2 || options[:final])
+      events_to_flush = remove_expired_maps()
 
       # at Logstash shutdown, if push_previous_map_as_event is enabled, it's important to force flush (particularly for jdbc input plugin)
       if options[:final] && @push_previous_map_as_event && !@@aggregate_maps[@task_id].empty?
@@ -701,50 +695,29 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
       # update last flush timestamp
       @@last_flush_timestamp_map[@task_id] = Time.now
-    end
-    # return events to flush into Logstash pipeline
-    return events_to_flush
 
+      # return events to flush into Logstash pipeline
+      return events_to_flush
+    else
+      return []
+    end
 
   end
 
 
-  # Remove the expired Aggregate maps from @@aggregate_maps if they are older than timeout.
+  # Remove the expired Aggregate maps from @@aggregate_maps if they are older than timeout or if no new event has been received seen inactivity_timeout.
   # If @push_previous_map_as_event option is set, or @push_map_as_event_on_timeout is set, expired maps are returned as new events to be flushed to Logstash pipeline.
   def remove_expired_maps()
     events_to_flush = []
     min_timestamp = Time.now - @timeout
+    min_inactivity_timestamp = Time.now - @inactivity_timeout
 
     @@mutex.synchronize do
 
       @logger.debug("Aggregate remove_expired_maps call with '#{@task_id}' pattern and #{@@aggregate_maps[@task_id].length} maps")
 
       @@aggregate_maps[@task_id].delete_if do |key, element|
-        if element.creation_timestamp < min_timestamp
-          if @push_previous_map_as_event || @push_map_as_event_on_timeout
-            events_to_flush << create_timeout_event(element.map, key)
-          end
-          next true
-        end
-        next false
-      end
-    end
-
-    return events_to_flush
-  end
-
-  # Remove the expired Aggregate maps due to inactivity timeout from @@aggregate_maps if they are older than @inactivity_timeout.
-  # If @push_previous_map_as_event option is set, or @push_map_as_event_on_timeout is set, expired maps are returned as new events to be flushed to Logstash pipeline.
-  def remove_inactive_maps()
-    events_to_flush = []
-    min_timestamp = Time.now - @inactivity_timeout
-
-    @@mutex.synchronize do
-
-      @logger.debug("Aggregate remove_inactive_maps call with '#{@task_id}' pattern and #{@@aggregate_maps[@task_id].length} maps")
-
-      @@aggregate_maps[@task_id].delete_if do |key, element|
-        if element.lastevent_timestamp < min_timestamp
+        if element.creation_timestamp < min_timestamp || element.lastevent_timestamp < min_inactivity_timestamp
           if @push_previous_map_as_event || @push_map_as_event_on_timeout
             events_to_flush << create_timeout_event(element.map, key)
           end
@@ -761,6 +734,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   def has_timeout_options?()
     return (
       timeout ||
+      inactivity_timeout ||
       timeout_code ||
       push_map_as_event_on_timeout ||
       push_previous_map_as_event ||
@@ -773,6 +747,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   def display_timeout_options()
     return [
       "timeout",
+      "inactivity_timeout",
       "timeout_code",
       "push_map_as_event_on_timeout",
       "push_previous_map_as_event",
