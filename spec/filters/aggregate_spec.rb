@@ -9,7 +9,7 @@ describe LogStash::Filters::Aggregate do
     reset_static_variables()
     @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
     @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event.get('duration')" })
-    @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.set('sql_duration', map['sql_duration'])", "end_of_task" => true, "timeout" => 5, "timeout_code" => "event.set('test', 'testValue')", "timeout_tags" => ["tag1", "tag2"] })
+    @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.set('sql_duration', map['sql_duration'])", "end_of_task" => true, "timeout" => 5, "inactivity_timeout" => 2, "timeout_code" => "event.set('test', 'testValue')", "timeout_tags" => ["tag1", "tag2"] })
   end
 
   context "Validation" do
@@ -20,8 +20,16 @@ describe LogStash::Filters::Aggregate do
         }.to raise_error(LogStash::ConfigurationError)
       end
     end
+    describe "and register a filter with inactivity_timeout longer than timeout" do
+      it "raises a LogStash::ConfigurationError" do
+        expect {
+          # use a diffrent task_id pattern, otherwise the timeout settings cannot be updated
+          setup_filter({ "task_id" => "%{taskid2}", "code" => "", "timeout" => 2, "inactivity_timeout" => 3 })
+        }.to raise_error(LogStash::ConfigurationError)
+      end
+    end
   end
-      
+
   context "Start event" do
     describe "and receiving an event without task_id" do
       it "does not record it" do
@@ -46,10 +54,10 @@ describe LogStash::Filters::Aggregate do
 
         first_start_event = start_event("taskid" => "id124")
         @start_filter.filter(first_start_event)
-        
+
         first_update_event = update_event("taskid" => "id124", "duration" => 2)
         @update_filter.filter(first_update_event)
-        
+
         sleep(1)
         second_start_event = start_event("taskid" => "id124")
         @start_filter.filter(second_start_event)
@@ -190,7 +198,7 @@ describe LogStash::Filters::Aggregate do
         entries = @end_filter.flush()
         expect(aggregate_maps["%{taskid}"]).to be_empty
         expect(entries.size).to eq(1)
-        expect(entries[0].get("my_id")).to eq("id_123") # task id 
+        expect(entries[0].get("my_id")).to eq("id_123") # task id
         expect(entries[0].get("sql_duration")).to eq(0) # Aggregation map
         expect(entries[0].get("test")).to eq("testValue") # Timeout code
         expect(entries[0].get("tags")).to eq(["tag1", "tag2"]) # Timeout tags
@@ -206,6 +214,54 @@ describe LogStash::Filters::Aggregate do
         expect(entries).to be_empty
       end
     end
+
+    context "inactivity_timeout" do
+      before(:each) do
+        @end_filter.timeout = 4
+        expect(@end_filter.timeout).to eq(4)
+        @end_filter.inactivity_timeout = 2
+        expect(@end_filter.inactivity_timeout).to eq(2)
+        @task_id_value = "id_123"
+        @start_event = start_event({"taskid" => @task_id_value})
+        @start_filter.filter(@start_event)
+        expect(aggregate_maps["%{taskid}"].size).to eq(1)
+      end
+      describe "event arrives before inactivity_timeout" do
+        it "does not remove event if another" do
+          expect(aggregate_maps["%{taskid}"].size).to eq(1)
+          sleep(1)
+          @start_filter.filter(start_event({"task_id" => @task_id_value}))
+          entries = @end_filter.flush()
+          expect(aggregate_maps["%{taskid}"].size).to eq(1)
+          expect(entries).to be_empty
+        end
+      end
+      describe "no event arrives after inactivity_timeout" do
+        it "removes event" do
+          expect(aggregate_maps["%{taskid}"].size).to eq(1)
+          sleep(3)
+          entries = @end_filter.flush()
+          expect(aggregate_maps["%{taskid}"]).to be_empty
+          expect(entries.size).to eq(1)
+        end
+      end
+      describe "timeout expires while events arrive within inactivity_timeout" do
+        it "removes event" do
+          expect(aggregate_maps["%{taskid}"].size).to eq(1)
+          sleep(1)
+          @start_filter.filter(start_event({"task_id" => @task_id_value}))
+          sleep(1)
+          @start_filter.filter(start_event({"task_id" => @task_id_value}))
+          sleep(1)
+          @start_filter.filter(start_event({"task_id" => @task_id_value}))
+          sleep(2)
+          @start_filter.filter(start_event({"task_id" => @task_id_value}))
+          entries = @end_filter.flush()
+          expect(aggregate_maps["%{taskid}"]).to be_empty
+          expect(entries.size).to eq(1)
+        end
+      end
+    end
   end
 
   context "aggregate_maps_path option is defined, " do
@@ -213,7 +269,7 @@ describe LogStash::Filters::Aggregate do
       it "stores aggregate maps to configured file and then loads aggregate maps from file" do
         store_file = "aggregate_maps"
         expect(File.exist?(store_file)).to be false
-          
+
         one_filter = setup_filter({ "task_id" => "%{one_special_field}", "code" => ""})
         store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
         expect(aggregate_maps["%{one_special_field}"]).to be_empty
@@ -222,10 +278,10 @@ describe LogStash::Filters::Aggregate do
         start_event = start_event("taskid" => 124)
         filter = store_filter.filter(start_event)
         expect(aggregate_maps["%{taskid}"].size).to eq(1)
-        
+
         @end_filter.close()
         expect(aggregate_maps).not_to be_empty
-        
+
         store_filter.close()
         expect(File.exist?(store_file)).to be true
         expect(aggregate_maps).to be_empty
@@ -247,7 +303,7 @@ describe LogStash::Filters::Aggregate do
       end
     end
   end
-  
+
   context "Logstash reload occurs, " do
     describe "close method is called, " do
       it "reinitializes static variables" do
@@ -256,14 +312,14 @@ describe LogStash::Filters::Aggregate do
         expect(taskid_eviction_instance).to be_nil
         expect(static_close_instance).not_to be_nil
         expect(aggregate_maps_path_set).to be false
-        
+
         @end_filter.register()
         expect(static_close_instance).to be_nil
       end
     end
   end
 
-  context "push_previous_map_as_event option is defined, " do 
+  context "push_previous_map_as_event option is defined, " do
     describe "when push_previous_map_as_event option is activated on another filter with same task_id pattern" do
       it "should throw a LogStash::ConfigurationError" do
         expect {
@@ -271,7 +327,7 @@ describe LogStash::Filters::Aggregate do
         }.to raise_error(LogStash::ConfigurationError)
       end
     end
-    
+
     describe "when a new task id is detected, " do
       it "should push previous map as new event" do
         push_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['ppm_id'] = event.get('ppm_id')", "push_previous_map_as_event" => true, "timeout" => 5, "timeout_task_id_field" => "timeout_task_id_field" })
@@ -310,6 +366,6 @@ describe LogStash::Filters::Aggregate do
       end
     end
   end
-  
+
 
 end
