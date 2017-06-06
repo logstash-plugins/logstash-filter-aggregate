@@ -18,6 +18,19 @@ END - GENERATED VARIABLES, DO NOT EDIT!
 
 include::{include_path}/plugin_header.asciidoc[]
 
+
+<<plugins-{type}s-{plugin}-description>> +
+<<plugins-{type}s-{plugin}-example1>> +
+<<plugins-{type}s-{plugin}-example2>> +
+<<plugins-{type}s-{plugin}-example3>> +
+<<plugins-{type}s-{plugin}-example4>> +
+<<plugins-{type}s-{plugin}-example5>> +
+<<plugins-{type}s-{plugin}-howitworks>> +
+<<plugins-{type}s-{plugin}-usecases>> +
+<<plugins-{type}s-{plugin}-options>> +
+
+
+[id="plugins-{type}s-{plugin}-description"]
 ==== Description
 
 
@@ -27,9 +40,12 @@ and finally push aggregated information into final task event.
 You should be very careful to set Logstash filter workers to 1 (`-w 1` flag) for this filter to work correctly
 otherwise events may be processed out of sequence and unexpected results will occur.
 
+
+[id="plugins-{type}s-{plugin}-example1"]
 ==== Example #1
 
 * with these given logs :
+
 [source,ruby]
 ----------------------------------
  INFO - 12345 - TASK_START - start
@@ -39,6 +55,7 @@ otherwise events may be processed out of sequence and unexpected results will oc
 ----------------------------------
 
 * you can aggregate "sql duration" for the whole task with this configuration :
+
 [source,ruby]
 ----------------------------------
  filter {
@@ -75,19 +92,23 @@ otherwise events may be processed out of sequence and unexpected results will oc
 ----------------------------------
 
 * the final event then looks like :
+
 [source,ruby]
 ----------------------------------
 {
-       "message" => "INFO - 12345 - TASK_END - end message",
+  "message" => "INFO - 12345 - TASK_END - end message",
   "sql_duration" => 46
 }
 ----------------------------------
 
 the field `sql_duration` is added and contains the sum of all sql queries durations.
 
+
+[id="plugins-{type}s-{plugin}-example2"]
 ==== Example #2 : no start event
 
 * If you have the same logs than example #1, but without a start log :
+
 [source,ruby]
 ----------------------------------
  INFO - 12345 - SQL - sqlQuery1 - 12
@@ -96,6 +117,7 @@ the field `sql_duration` is added and contains the sum of all sql queries durati
 ----------------------------------
 
 * you can also aggregate "sql duration" with a slightly different configuration :
+
 [source,ruby]
 ----------------------------------
  filter {
@@ -125,6 +147,7 @@ the field `sql_duration` is added and contains the sum of all sql queries durati
 * the key point is the "||=" ruby operator. It allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
 
 
+[id="plugins-{type}s-{plugin}-example3"]
 ==== Example #3 : no end event
 
 Third use case: You have no specific end event.
@@ -179,27 +202,35 @@ filter {
 }
 ----------------------------------
 
+
+[id="plugins-{type}s-{plugin}-example4"]
 ==== Example #4 : no end event and tasks come one after the other
 
-Fourth use case : like example #3, you have no specific end event, but also, tasks come one after the other.
-That is to say : tasks are not interlaced. All task1 events come, then all task2 events come, ...
-In that case, you don't want to wait task timeout to flush aggregation map.
+Fourth use case : like example #3, you have no specific end event, but also, tasks come one after the other. +
+That is to say : tasks are not interlaced. All task1 events come, then all task2 events come, ... +
+In that case, you don't want to wait task timeout to flush aggregation map. +
+
 * A typical case is aggregating results from jdbc input plugin.
 * Given that you have this SQL query : `SELECT country_name, town_name FROM town`
 * Using jdbc input plugin, you get these 3 events from :
+
 [source,json]
 ----------------------------------
   { "country_name": "France", "town_name": "Paris" }
   { "country_name": "France", "town_name": "Marseille" }
   { "country_name": "USA", "town_name": "New-York" }
 ----------------------------------
+
 * And you would like these 2 result events to push them into elasticsearch :
+
 [source,json]
 ----------------------------------
   { "country_name": "France", "towns": [ {"town_name": "Paris"}, {"town_name": "Marseille"} ] }
   { "country_name": "USA", "towns": [ {"town_name": "New-York"} ] }
 ----------------------------------
+
 * You can do that using `push_previous_map_as_event` aggregate plugin option :
+
 [source,ruby]
 ----------------------------------
    filter {
@@ -216,26 +247,41 @@ In that case, you don't want to wait task timeout to flush aggregation map.
      }
    }
 ----------------------------------
+
 * The key point is that each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new Logstash event, and then creates a new empty map for the next country
 * When 5s timeout comes, the last aggregate map is pushed as a new event
 * Finally, initial events (which are not aggregated) are dropped because useless (thanks to `event.cancel()`)
 
+
+[id="plugins-{type}s-{plugin}-example5"]
 ==== Example #5 : no end event and push events as soon as possible
-Fifth use case: like example #3, there is no end event. Events keep comming for an indefinite time and you want to push the aggregation map as soon as possible after the last user interaction without waiting for the `timeout`. This allows to have the aggregated events pushed closer to real time.
-A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction. The user ineraction will be considered as ended when no events for the specified user (task_id) arrive after the specified inactivity_timeout`.
-If the user continues interacting for longer than `timeout` seconds (since first event), the aggregation map will still be deleted and pushed as a new event when timeout occurs.
+
+Fifth use case: like example #3, there is no end event. +
+Events keep comming for an indefinite time and you want to push the aggregation map as soon as possible after the last user interaction without waiting for the `timeout`. +
+This allows to have the aggregated events pushed closer to real time. +
+
+A typical case is aggregating or tracking user behaviour. +
+We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. +
+There is no specific event indicating the end of the user's interaction. +
+The user ineraction will be considered as ended when no events for the specified user (task_id) arrive after the specified inactivity_timeout`. +
+If the user continues interacting for longer than `timeout` seconds (since first event), the aggregation map will still be deleted and pushed as a new event when timeout occurs. +
 The difference with example #3 is that the events will be pushed as soon as the user stops interacting for `inactivity_timeout` seconds instead of waiting for the end of `timeout` seconds since first event.
-In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when inactivity timeout occurs.
-In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
-We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID.
+
+In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when inactivity timeout occurs. +
+In addition, we can enable 'timeout_code' to execute code on the populated timeout event. +
+We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. +
+
 * Given these logs:
+
 [source,ruby]
 ----------------------------------
 INFO - 12345 - Clicked One
 INFO - 12345 - Clicked Two
 INFO - 12345 - Clicked Three
 ----------------------------------
+
 * You can aggregate the amount of clicks the user did like this:
+
 [source,ruby]
 ----------------------------------
 filter {
@@ -254,7 +300,9 @@ filter {
  }
 }
 ----------------------------------
+
 * After five minutes of inactivity or one hour since first event, this will yield an event like:
+
 [source,json]
 ----------------------------------
 {
@@ -267,6 +315,8 @@ filter {
 }
 ----------------------------------
 
+
+[id="plugins-{type}s-{plugin}-howitworks"]
 ==== How it works
 * the filter needs a "task_id" to correlate events (log lines) of a same task
 * at the task beggining, filter creates a map, attached to task_id
@@ -280,6 +330,7 @@ filter {
 * if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
 
 
+[id="plugins-{type}s-{plugin}-usecases"]
 ==== Use Cases
 * extract some cool metrics from task logs and push them into task final log event (like in example #1 and #2)
 * extract error information in any task log line, and push it in final task event (to get a final event with all error information if any)
@@ -287,7 +338,6 @@ filter {
 * extract all http headers logged in several lines to push this list in final task event (complete http request info)
 * for every back-end call, collect call details available on several lines, analyse it and finally tag final back-end call log line (error, timeout, business-warning, ...)
 * Finally, task id can be any correlation id matching your need : it can be a session id, a file path, ...
-
 
 
 [id="plugins-{type}s-{plugin}-options"]
@@ -298,10 +348,11 @@ This plugin supports the following configuration options plus the <<plugins-{typ
 [cols="<,<,<",options="header",]
 |=======================================================================
 |Setting |Input type|Required
-| <<plugins-{type}s-{plugin}-aggregate_maps_path>> |<<string,string>>|No
+| <<plugins-{type}s-{plugin}-aggregate_maps_path>> |<<string,string>>, a valid filesystem path|No
 | <<plugins-{type}s-{plugin}-code>> |<<string,string>>|Yes
 | <<plugins-{type}s-{plugin}-end_of_task>> |<<boolean,boolean>>|No
-| <<plugins-{type}s-{plugin}-map_action>> |<<string,string>>|No
+| <<plugins-{type}s-{plugin}-inactivity_timeout>> |<<number,number>>|No
+| <<plugins-{type}s-{plugin}-map_action>> |<<string,string>>, one of `["create", "update", "create_or_update"]`|No
 | <<plugins-{type}s-{plugin}-push_map_as_event_on_timeout>> |<<boolean,boolean>>|No
 | <<plugins-{type}s-{plugin}-push_previous_map_as_event>> |<<boolean,boolean>>|No
 | <<plugins-{type}s-{plugin}-task_id>> |<<string,string>>|Yes
@@ -365,6 +416,22 @@ Example:
 
 Tell the filter that task is ended, and therefore, to delete aggregate map after code execution.
 
+[id="plugins-{type}s-{plugin}-inactivity_timeout"]
+===== `inactivity_timeout`
+
+  * Value type is <<number,number>>
+  * There is no default value for this setting.
+
+The amount of seconds (since the last event) after which a task is considered as expired.
+
+When timeout occurs for a task, its aggregate map is evicted.
+
+If 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true, the task aggregation map is pushed as a new Logstash event.
+
+`inactivity_timeout` can be defined for each "task_id" pattern.
+
+`inactivity_timeout` must be lower than `timeout`.
+
 [id="plugins-{type}s-{plugin}-map_action"]
 ===== `map_action`
 
@@ -406,9 +473,6 @@ WARNING: this option works fine only if tasks come one after the other. It means
   * Value type is <<string,string>>
   * There is no default value for this setting.
 
-############## #
-CONFIG OPTIONS #
-############## #
 The expression defining task ID to correlate logs.
 
 This value must uniquely identify the task.
@@ -425,15 +489,15 @@ Example:
 ===== `timeout`
 
   * Value type is <<number,number>>
-  * There is no default value for this setting.
+  * Default value is `1800`
 
-The amount of seconds after a task "end event" can be considered lost.
+The amount of seconds (since the first event) after which a task is considered as expired.
 
-When timeout occurs for a task, The task "map" is evicted.
+When timeout occurs for a task, its aggregate map is evicted.
+
+If 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true, the task aggregation map is pushed as a new Logstash event.
 
 Timeout can be defined for each "task_id" pattern.
-
-If no timeout is defined, default timeout will be applied : 1800 seconds.
 
 [id="plugins-{type}s-{plugin}-timeout_code"]
 ===== `timeout_code`

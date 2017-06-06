@@ -1,327 +1,104 @@
-# Logstash Filter Aggregate Documentation
+# Aggregate Logstash Plugin
 
 [![Travis Build Status](https://travis-ci.org/logstash-plugins/logstash-filter-aggregate.svg)](https://travis-ci.org/logstash-plugins/logstash-filter-aggregate)
 
-The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task, and finally push aggregated information into final task event.
+This is a plugin for [Logstash](https://github.com/elastic/logstash).
 
-You should be very careful to set Logstash filter workers to 1 (`-w 1` flag) for this filter to work correctly 
-otherwise events may be processed out of sequence and unexpected results will occur.
- 
-## Example #1
+It is fully free and fully open source. The license is Apache 2.0, meaning you are pretty much free to use it however you want in whatever way.
 
-* with these given logs : 
-```
-     INFO - 12345 - TASK_START - start
-     INFO - 12345 - SQL - sqlQuery1 - 12
-     INFO - 12345 - SQL - sqlQuery2 - 34
-     INFO - 12345 - TASK_END - end
-```
+## Documentation
 
-* you can aggregate "sql duration" for the whole task with this configuration : 
-``` ruby
-     filter {
-         grok {
-             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{NOTSPACE:logger} - %{WORD:label}( - %{INT:duration:int})?" ]
-         }
-     
-         if [logger] == "TASK_START" {
-             aggregate {
-                 task_id => "%{taskid}"
-                 code => "map['sql_duration'] = 0"
-                 map_action => "create"
-             }
-         }
-     
-         if [logger] == "SQL" {
-             aggregate {
-                 task_id => "%{taskid}"
-                 code => "map['sql_duration'] += event.get('duration')"
-                 map_action => "update"
-             }
-         }
-     
-         if [logger] == "TASK_END" {
-             aggregate {
-                 task_id => "%{taskid}"
-                 code => "event.set('sql_duration', map['sql_duration'])"
-                 map_action => "update"
-                 end_of_task => true
-                 timeout => 120
-             }
-         }
-     }
-```
+Latest aggregate plugin documentation is available [here](docs/index.asciidoc).
 
-* the final event then looks like :
-``` ruby
-{
-         "message" => "INFO - 12345 - TASK_END - end",
-    "sql_duration" => 46
-}
-```
+Logstash provides infrastructure to automatically generate documentation for this plugin. We use the asciidoc format to write documentation so any comments in the source code will be first converted into asciidoc and then into html. All plugin documentation are placed under one [central location](http://www.elastic.co/guide/en/logstash/current/).
 
-the field `sql_duration` is added and contains the sum of all sql queries durations.
-
-## Example #2 : no start event
-
-* If you have the same logs than example #1, but without a start log : 
-```
-     INFO - 12345 - SQL - sqlQuery1 - 12
-     INFO - 12345 - SQL - sqlQuery2 - 34
-     INFO - 12345 - TASK_END - end
-```
-
-* you can also aggregate "sql duration" with a slightly different configuration : 
-``` ruby
-     filter {
-         grok {
-             match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:taskid} - %{NOTSPACE:logger} - %{WORD:label}( - %{INT:duration:int})?" ]
-         }
-     
-         if [logger] == "SQL" {
-             aggregate {
-                 task_id => "%{taskid}"
-                 code => "map['sql_duration'] ||= 0 ; map['sql_duration'] += event.get('duration')"
-             }
-         }
-     
-         if [logger] == "TASK_END" {
-             aggregate {
-                 task_id => "%{taskid}"
-                 code => "event.set('sql_duration', map['sql_duration'])"
-                 end_of_task => true
-                 timeout => 120
-             }
-         }
-     }
-```
-
-* the final event is exactly the same than example #1
-* the key point is the "||=" ruby operator.  
-it allows to initialize 'sql_duration' map entry to 0 only if this map entry is not already initialized
-
-## Example #3 : no end event
-
-Third use case: You have no specific end event. 
-
-A typical case is aggregating or tracking user behaviour. We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. There is no specific event indicating the end of the user's interaction.
-
-In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when a timeout occurs.  
-In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
-We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. 
-
-* Given these logs:
-
-```
-    INFO - 12345 - Clicked One
-    INFO - 12345 - Clicked Two
-    INFO - 12345 - Clicked Three
-```
-
-* You can aggregate the amount of clicks the user did like this:
-
-``` ruby
-    filter {
-        grok {
-                 match => [ "message", "%{LOGLEVEL:loglevel} - %{NOTSPACE:user_id} - %{GREEDYDATA:msg_text}" ]
-        }
-
-        aggregate {
-            task_id => "%{user_id}"
-            code => "map['clicks'] ||= 0; map['clicks'] += 1;"
-            push_map_as_event_on_timeout => true
-            timeout_task_id_field => "user_id"
-            timeout => 600 # 10 minutes timeout
-            timeout_tags => ['_aggregatetimeout']
-            timeout_code => "event.set('several_clicks', event.get('clicks') > 1)"
-        }
-    }
-```
-
-* After ten minutes, this will yield an event like:
-
-``` json
-    {
-        "user_id": "12345",
-        "clicks": 3,
-        "several_clicks": true,
-        "tags": [
-            "_aggregatetimeout"
-        ]
-    }
-```
-
-
-## Example #4 : no end event and tasks come one after the other
-
-Fourth use case : like example #3, you have no specific end event, but also, tasks come one after the other.  
-That is to say : tasks are not interlaced. All task1 events come, then all task2 events come, ...  
-In that case, you don't want to wait task timeout to flush aggregation map.  
-* A typical case is aggregating results from jdbc input plugin.
-* Given that you have this SQL query : `SELECT country_name, town_name FROM town ORDER BY country_name`  
-* Using jdbc input plugin, you get these 3 events from :
-``` json
-  { "country_name": "France", "town_name": "Paris" }
-  { "country_name": "France", "town_name": "Marseille" }
-  { "country_name": "USA", "town_name": "New-York" }
-```
-* And you would like these 2 result events to push them into elasticsearch :
-``` json
-  { "country_name": "France", "towns": [ {"town_name": "Paris"}, {"town_name": "Marseille"} ] }
-  { "country_name": "USA", "towns": [ {"town_name": "New-York"} ] }
-```
-* You can do that using `push_previous_map_as_event` aggregate plugin option :
-``` ruby
-    filter {
-      aggregate {
-        task_id => "%{country_name}"
-        code => "
-          map['country_name'] = event.get('country_name')
-          map['towns'] ||= []
-          map['towns'] << {'town_name' => event.get('town_name')}
-          event.cancel()
-        "
-        push_previous_map_as_event => true
-        timeout => 3
-      }
-    }
-```
-* The key point is that each time aggregate plugin detects a new `country_name`, it pushes previous aggregate map as a new Logstash event, and then creates a new empty map for the next country
-* When 5s timeout comes, the last aggregate map is pushed as a new event
-* Finally, initial events (which are not aggregated) are dropped because useless (thanks to `event.cancel()`)
-
-## How it works
-- the filter needs a "task_id" to correlate events (log lines) of a same task
-- at the task beggining, filter creates a map, attached to task_id
-- for each event, you can execute code using 'event' and 'map' (for instance, copy an event field to map)
-- in the final event, you can execute a last code (for instance, add map data to final event)
-- after the final event, the map attached to task is deleted (thanks to `end_of_task => true`)
-- an aggregate map is tied to one task_id value which is tied to one task_id pattern.  
-So if you have 2 filters with different task_id patterns, even if you have same task_id value, they won't share the same aggregate map.
-- in one filter configuration, it is recommanded to define a timeout option to protect the filter against unterminated tasks. It tells the filter to delete expired maps
-- if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
-- all timeout options have to be defined in only one aggregate filter per task_id pattern.  
-Timeout options are : `timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags`
-- if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
-
-## Use Cases
-- extract some cool metrics from task logs and push them into task final log event (like in example #1 and #2)
-- extract error information in any task log line, and push it in final task event (to get a final event with all error information if any)
-- extract all back-end calls as a list, and push this list in final task event (to get a task profile)
-- extract all http headers logged in several lines to push this list in final task event (complete http request info)
-- for every back-end call, collect call details available on several lines, analyse it and finally tag final back-end call log line (error, timeout, business-warning, ...)
-- Finally, task id can be any correlation id matching your need : it can be a session id, a file path, ...
-
-## Aggregate Plugin Options
-- **task_id :**  
-The expression defining task ID to correlate logs.  
-This value must uniquely identify the task.  
-This option is required.  
-Example:
-``` ruby
-filter {
-  aggregate {
-    task_id => "%{type}%{my_task_id}"
-  }
-}
-```
-
-- **code:**  
-The code to execute to update map, using current event.  
-Or on the contrary, the code to execute to update event, using current map.  
-You will have a 'map' variable and an 'event' variable available (that is the event itself).  
-This option is required.  
-Example:
-``` ruby
-filter {
-  aggregate {
-    code => "map['sql_duration'] += event.get('duration')"
-  }
-}
-```
-
-- **map_action:**  
-Tell the filter what to do with aggregate map (default :  "create_or_update").  
-`create`: create the map, and execute the code only if map wasn't created before  
-`update`: doesn't create the map, and execute the code only if map was created before  
-`create_or_update`: create the map if it wasn't created before, execute the code in all cases  
-Default value: `create_or_update`  
-
-- **end_of_task:**  
-Tell the filter that task is ended, and therefore, to delete aggregate map after code execution.  
-Default value: `false`  
-
-- **aggregate_maps_path:**  
-The path to file where aggregate maps are stored when Logstash stops and are loaded from when Logstash starts.  
-If not defined, aggregate maps will not be stored at Logstash stop and will be lost.   
-Must be defined in only one aggregate filter (as aggregate maps are global).  
-Example:
-``` ruby
-filter {
-  aggregate {
-    aggregate_maps_path => "/path/to/.aggregate_maps"
-  }
-}
-```
-
-- **timeout:**  
-The amount of seconds after a task "end event" can be considered lost.  
-When timeout occurs for a task, The task "map" is evicted.  
-Timeout can be defined for each "task_id" pattern.  
-If no timeout is defined, default timeout will be applied : 1800 seconds.  
-
-- **timeout_code**  
-The code to execute to complete timeout generated event, when `'push_map_as_event_on_timeout'` or `'push_previous_map_as_event'` is set to true.  
-The code block will have access to the newly generated timeout event that is pre-populated with the aggregation map.  
-If `'timeout_task_id_field'` is set, the event is also populated with the task_id value  
-Example:
-``` ruby
-filter {
-  aggregate {
-    timeout_code => "event.set('state', 'timeout')"
-  }
-}
-```
-
-- **push_map_as_event_on_timeout**  
-When this option is enabled, each time a task timeout is detected, it pushes task aggregation map as a new Logstash event.  
-This enables to detect and process task timeouts in Logstash, but also to manage tasks that have no explicit end event.  
-Default value: `false`  
-
-- **push_previous_map_as_event:**  
-When this option is enabled, each time aggregate plugin detects a new task id, it pushes previous aggregate map as a new Logstash event, 
-and then creates a new empty map for the next task.  
-_WARNING:_ this option works fine only if tasks come one after the other. It means : all task1 events, then all task2 events, etc...  
-Default value: `false`  
-
-- **timeout_task_id_field**  
-This option indicates the timeout generated event's field for the "task_id" value.  
-The task id will then be set into the timeout event. This can help correlate which tasks have been timed out.  
-For example, with option `timeout_task_id_field => "my_id"` ,when timeout task id is `"12345"`, the generated timeout event will contain `'my_id' => '12345'`.  
-By default, if this option is not set, task id value won't be set into timeout generated event.  
-
-- **timeout_tags**  
-Defines tags to add when a timeout event is generated and yield.  
-Default value: `[]`  
-Example:
-``` ruby
-filter {
-  aggregate {
-    timeout_tags => ["aggregate_timeout']
-  }
-}
-```
+- For formatting code or config example, you can use the asciidoc `[source,ruby]` directive
+- For more asciidoc formatting tips, see the excellent reference here https://github.com/elastic/docs#asciidoc-guide
 
 ## Changelog
 
 Read [CHANGELOG.md](CHANGELOG.md).
 
-
 ## Need Help?
 
-Need help? Try #Logstash on freenode IRC or the https://discuss.elastic.co/c/logstash discussion forum.
+Need help? Try #logstash on freenode IRC or the https://discuss.elastic.co/c/logstash discussion forum.
 
+## Developing
 
-## Want to contribute?
+### 1. Plugin Developement and Testing
 
-Read [BUILD.md](BUILD.md).
+#### Code
+- To get started, you'll need JRuby with the Bundler gem installed.
+
+- Create a new plugin or clone and existing from the GitHub [logstash-plugins](https://github.com/logstash-plugins) organization. We also provide [example plugins](https://github.com/logstash-plugins?query=example).
+
+- Install dependencies
+```sh
+bundle install
+```
+
+#### Test
+
+- Update your dependencies
+
+```sh
+bundle install
+```
+
+- Run tests
+
+```sh
+bundle exec rspec
+```
+
+### 2. Running your unpublished Plugin in Logstash
+
+#### 2.1 Run in a local Logstash clone
+
+- Edit Logstash `Gemfile` and add the local plugin path, for example:
+```ruby
+gem "logstash-filter-awesome", :path => "/your/local/logstash-filter-awesome"
+```
+- Install plugin
+```sh
+# Logstash 2.3 and higher
+bin/logstash-plugin install --no-verify
+
+# Prior to Logstash 2.3
+bin/plugin install --no-verify
+
+```
+- Run Logstash with your plugin
+```sh
+bin/logstash -e 'filter {awesome {}}'
+```
+At this point any modifications to the plugin code will be applied to this local Logstash setup. After modifying the plugin, simply rerun Logstash.
+
+#### 2.2 Run in an installed Logstash
+
+You can use the same **2.1** method to run your plugin in an installed Logstash by editing its `Gemfile` and pointing the `:path` to your local plugin development directory or you can build the gem and install it using:
+
+- Build your plugin gem
+```sh
+gem build logstash-filter-awesome.gemspec
+```
+- Install the plugin from the Logstash home
+```sh
+# Logstash 2.3 and higher
+bin/logstash-plugin install --no-verify
+
+# Prior to Logstash 2.3
+bin/plugin install --no-verify
+
+```
+- Start Logstash and proceed to test the plugin
+
+## Contributing
+
+All contributions are welcome: ideas, patches, documentation, bug reports, complaints, and even something you drew up on a napkin.
+
+Programming is not a required skill. Whatever you've seen about open source and maintainers or community members  saying "send patches or die" - you will not see that here.
+
+It is more important to the community that you are able to contribute.
+
+For more information about contributing, see the [CONTRIBUTING](https://github.com/elastic/logstash/blob/master/CONTRIBUTING.md) file.
