@@ -353,24 +353,28 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   #     }
   config :aggregate_maps_path, :validate => :string, :required => false
 
-  # The amount of seconds (since the first event) after a task "end event" can be considered lost.
+  # The amount of seconds (since the first event) after which a task is considered as expired.
   #
-  # When timeout occurs for a task, The task "map" is evicted.
+  # When timeout occurs for a task, its aggregate map is evicted.
+  #
+  # If 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true, the task aggregation map is pushed as a new Logstash event.
   #
   # Timeout can be defined for each "task_id" pattern.
   #
   # If no timeout is defined, default timeout will be applied : 1800 seconds.
   config :timeout, :validate => :number, :required => false
 
-  # The amount of seconds (since the last event arrival) after a task "end event" can be considered lost.
+  # The amount of seconds (since the last event) after which a task is considered as expired.
   #
-  # When inactivity_timeout occurs for a task, The task "map" is evicted.
+  # When timeout occurs for a task, its aggregate map is evicted.
+  #
+  # If 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true, the task aggregation map is pushed as a new Logstash event.
   #
   # `inactivity_timeout` can be defined for each "task_id" pattern.
   #
-  # `inactivity_timeout` must be lower than `timeout`
+  # `inactivity_timeout` must be lower than `timeout`.
   #
-  # If no inactivity_timeout is defined, no inactivity timeout will be applied (only timeout will be applied).
+  # If no `inactivity_timeout` is defined, no inactivity timeout will be applied (only timeout will be applied).
   config :inactivity_timeout, :validate => :number, :required => false
 
   # The code to execute to complete timeout generated event, when 'push_map_as_event_on_timeout' or 'push_previous_map_as_event' is set to true.
