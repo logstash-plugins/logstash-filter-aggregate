@@ -1,3 +1,9 @@
+## 2.6.2
+- Docs: Remove incorrectly coded, redundant links
+
+## 2.6.1
+- Docs: Bump patch level for doc build
+
 ## 2.6.0
 - new feature: 'inactivity_timeout'. Events for a given `task_id` will be aggregated for as long as they keep arriving within the defined `inactivity_timeout` option - the inactivity timeout is reset each time a new event happens. On the contrary, `timeout` is never reset and happens after `timeout` seconds since aggregation map creation.
 
