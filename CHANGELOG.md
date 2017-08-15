@@ -1,3 +1,6 @@
+## 2.6.3
+  - Fix some documentation issues
+
 ## 2.6.2
 - Docs: Remove incorrectly coded, redundant links
 

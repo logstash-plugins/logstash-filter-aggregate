@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'logstash-filter-aggregate'
-  s.version         = '2.6.2'
+  s.version         = '2.6.3'
   s.licenses = ['Apache License (2.0)']
   s.summary = 'The aim of this filter is to aggregate information available among several events (typically log lines) belonging to a same task, and finally push aggregated information into final task event.'
   s.description = 'This gem is a Logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/logstash-plugin install gemname. This gem is not a stand-alone program'
