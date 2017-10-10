@@ -684,7 +684,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     end
 
     # Launch timeout management only every interval of (@inactivity_timeout / 2) seconds or at Logstash shutdown
-    if @@flush_instance_map[@task_id] == self && (!@@last_flush_timestamp_map.has_key?(@task_id) || Time.now > @@last_flush_timestamp_map[@task_id] + @inactivity_timeout / 2 || options[:final])
+    if @@flush_instance_map[@task_id] == self && !@@aggregate_maps[@task_id].nil? && (!@@last_flush_timestamp_map.has_key?(@task_id) || Time.now > @@last_flush_timestamp_map[@task_id] + @inactivity_timeout / 2 || options[:final])
       events_to_flush = remove_expired_maps()
 
       # at Logstash shutdown, if push_previous_map_as_event is enabled, it's important to force flush (particularly for jdbc input plugin)
