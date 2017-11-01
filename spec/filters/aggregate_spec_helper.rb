@@ -33,31 +33,40 @@ def filter(event)
 	@end_filter.filter(event)
 end
 
+def pipelines()
+  LogStash::Filters::Aggregate.class_variable_get(:@@pipelines)
+end
+
+def current_pipeline()
+  pipelines()['main']
+end
+
 def aggregate_maps()
-	LogStash::Filters::Aggregate.class_variable_get(:@@aggregate_maps)
+  current_pipeline().aggregate_maps
 end
 
 def taskid_eviction_instance()
-	LogStash::Filters::Aggregate.class_variable_get(:@@flush_instance_map)["%{taskid}"]
+  current_pipeline().flush_instance_map["%{taskid}"]
 end
 
-def static_close_instance()
-  LogStash::Filters::Aggregate.class_variable_get(:@@static_close_instance)
+def pipeline_close_instance()
+  current_pipeline().pipeline_close_instance
 end
 
 def aggregate_maps_path_set()
-  LogStash::Filters::Aggregate.class_variable_get(:@@aggregate_maps_path_set)
+  current_pipeline().aggregate_maps_path_set
 end
 
 def reset_timeout_management()
-	LogStash::Filters::Aggregate.class_variable_set(:@@default_timeout, nil)
-  LogStash::Filters::Aggregate.class_variable_get(:@@flush_instance_map).clear()
-  LogStash::Filters::Aggregate.class_variable_get(:@@last_flush_timestamp_map).clear()
+  current_pipeline().default_timeout = nil
+  current_pipeline().flush_instance_map.clear()
+  current_pipeline().last_flush_timestamp_map.clear()
 end
 
-def reset_static_variables()
-  reset_timeout_management()
-  aggregate_maps().clear()
-  LogStash::Filters::Aggregate.class_variable_set(:@@static_close_instance, nil)
-  LogStash::Filters::Aggregate.class_variable_set(:@@aggregate_maps_path_set, false)
+def reset_pipeline_variables()
+  pipelines().clear()
+#  reset_timeout_management()
+#  aggregate_maps().clear()
+#  current_pipeline().pipeline_close_instance = nil
+#  current_pipeline().aggregate_maps_path_set = false
 end
