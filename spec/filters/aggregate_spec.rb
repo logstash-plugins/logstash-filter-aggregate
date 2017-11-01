@@ -6,7 +6,7 @@ require_relative "aggregate_spec_helper"
 describe LogStash::Filters::Aggregate do
 
   before(:each) do
-    reset_static_variables()
+    reset_pipeline_variables()
     @start_filter = setup_filter({ "map_action" => "create", "code" => "map['sql_duration'] = 0" })
     @update_filter = setup_filter({ "map_action" => "update", "code" => "map['sql_duration'] += event.get('duration')" })
     @end_filter = setup_filter({"timeout_task_id_field" => "my_id", "push_map_as_event_on_timeout" => true, "map_action" => "update", "code" => "event.set('sql_duration', map['sql_duration'])", "end_of_task" => true, "timeout" => 5, "inactivity_timeout" => 2, "timeout_code" => "event.set('test', 'testValue')", "timeout_tags" => ["tag1", "tag2"] })
@@ -268,6 +268,7 @@ describe LogStash::Filters::Aggregate do
     describe "close event append then register event append, " do
       it "stores aggregate maps to configured file and then loads aggregate maps from file" do
         store_file = "aggregate_maps"
+        File.delete(store_file) if File.exist?(store_file)
         expect(File.exist?(store_file)).to be false
 
         one_filter = setup_filter({ "task_id" => "%{one_special_field}", "code" => ""})
@@ -284,7 +285,7 @@ describe LogStash::Filters::Aggregate do
 
         store_filter.close()
         expect(File.exist?(store_file)).to be true
-        expect(aggregate_maps).to be_empty
+        expect(current_pipeline).to be_nil
 
         one_filter = setup_filter({ "task_id" => "%{one_special_field}", "code" => ""})
         store_filter = setup_filter({ "code" => "map['sql_duration'] = 0", "aggregate_maps_path" => store_file })
@@ -306,15 +307,14 @@ describe LogStash::Filters::Aggregate do
 
   context "Logstash reload occurs, " do
     describe "close method is called, " do
-      it "reinitializes static variables" do
+      it "reinitializes pipelines" do
         @end_filter.close()
-        expect(aggregate_maps).to be_empty
-        expect(taskid_eviction_instance).to be_nil
-        expect(static_close_instance).not_to be_nil
-        expect(aggregate_maps_path_set).to be false
+        expect(current_pipeline).to be_nil
 
         @end_filter.register()
-        expect(static_close_instance).to be_nil
+        expect(current_pipeline).not_to be_nil
+        expect(aggregate_maps).not_to be_nil
+        expect(pipeline_close_instance).to be_nil
       end
     end
   end
