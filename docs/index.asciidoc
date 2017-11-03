@@ -195,9 +195,11 @@ filter {
 [id="plugins-{type}s-{plugin}-example4"]
 ==== Example #4 : no end event and tasks come one after the other
 
-Fourth use case : like example #3, you have no specific end event, but also, tasks come one after the other. +
-That is to say : tasks are not interlaced. All task1 events come, then all task2 events come, ... +
-In that case, you don't want to wait task timeout to flush aggregation map. +
+Fourth use case : like example #3, you have no specific end event, but also, tasks come one after the other.
+
+That is to say : tasks are not interlaced. All task1 events come, then all task2 events come, ...
+
+In that case, you don't want to wait task timeout to flush aggregation map.
 
 * A typical case is aggregating results from jdbc input plugin.
 * Given that you have this SQL query : `SELECT country_name, town_name FROM town`
@@ -245,20 +247,31 @@ In that case, you don't want to wait task timeout to flush aggregation map. +
 [id="plugins-{type}s-{plugin}-example5"]
 ==== Example #5 : no end event and push events as soon as possible
 
-Fifth use case: like example #3, there is no end event. +
-Events keep comming for an indefinite time and you want to push the aggregation map as soon as possible after the last user interaction without waiting for the `timeout`. +
-This allows to have the aggregated events pushed closer to real time. +
+Fifth use case: like example #3, there is no end event.
 
-A typical case is aggregating or tracking user behaviour. +
-We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in. +
-There is no specific event indicating the end of the user's interaction. +
-The user ineraction will be considered as ended when no events for the specified user (task_id) arrive after the specified inactivity_timeout`. +
-If the user continues interacting for longer than `timeout` seconds (since first event), the aggregation map will still be deleted and pushed as a new event when timeout occurs. +
+Events keep comming for an indefinite time and you want to push the aggregation map as soon as possible after the last user interaction without waiting for the `timeout`.
+
+This allows to have the aggregated events pushed closer to real time.
+
+
+A typical case is aggregating or tracking user behaviour.
+
+We can track a user by its ID through the events, however once the user stops interacting, the events stop coming in.
+
+There is no specific event indicating the end of the user's interaction.
+
+The user ineraction will be considered as ended when no events for the specified user (task_id) arrive after the specified inactivity_timeout`.
+
+If the user continues interacting for longer than `timeout` seconds (since first event), the aggregation map will still be deleted and pushed as a new event when timeout occurs.
+
 The difference with example #3 is that the events will be pushed as soon as the user stops interacting for `inactivity_timeout` seconds instead of waiting for the end of `timeout` seconds since first event.
 
-In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when inactivity timeout occurs. +
-In addition, we can enable 'timeout_code' to execute code on the populated timeout event. +
-We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID. +
+In this case, we can enable the option 'push_map_as_event_on_timeout' to enable pushing the aggregation map as a new event when inactivity timeout occurs.
+
+In addition, we can enable 'timeout_code' to execute code on the populated timeout event.
+
+We can also add 'timeout_task_id_field' so we can correlate the task_id, which in this case would be the user's ID.
+
 
 * Given these logs:
 
