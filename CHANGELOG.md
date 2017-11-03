@@ -1,3 +1,9 @@
+## 2.7.0
+ - new feature: add support for multiple pipelines (for Logstash 6.0+)  
+   aggregate maps, timeout options, and aggregate_maps_path are now stored per pipeline.  
+   each pipeline is independant.
+ - docs: fix break lines in documentation examples  
+
 ## 2.6.4
 - bugfix: fix a NPE issue at Logstash 6.0 shutdown
 - docs: remove all redundant documentation in aggregate.rb (now only present in docs/index.asciidoc)
