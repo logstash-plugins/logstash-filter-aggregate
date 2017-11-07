@@ -1,3 +1,6 @@
+## 2.7.1
+  - Update gemspec summary
+
 ## 2.7.0
  - new feature: add support for multiple pipelines (for Logstash 6.0+)  
    aggregate maps, timeout options, and aggregate_maps_path are now stored per pipeline.  
