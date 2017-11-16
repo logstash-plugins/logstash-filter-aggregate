@@ -299,8 +299,10 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       events_to_flush = remove_expired_maps()
 
       # at Logstash shutdown, if push_previous_map_as_event is enabled, it's important to force flush (particularly for jdbc input plugin)
-      if options[:final] && @push_previous_map_as_event && !@current_pipeline.aggregate_maps[@task_id].empty?
-        events_to_flush << extract_previous_map_as_event()
+      @current_pipeline.mutex.synchronize do
+        if options[:final] && @push_previous_map_as_event && !@current_pipeline.aggregate_maps[@task_id].empty?
+          events_to_flush << extract_previous_map_as_event()
+        end
       end
 
       # tag flushed events, indicating "final flush" special event
