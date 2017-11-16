@@ -1,5 +1,8 @@
+## 2.7.2
+  - bugfix: fix synchronisation issue at Logstash shutdown (#75)
+
 ## 2.7.1
-  - Update gemspec summary
+  - docs: update gemspec summary
 
 ## 2.7.0
  - new feature: add support for multiple pipelines (for Logstash 6.0+)  
