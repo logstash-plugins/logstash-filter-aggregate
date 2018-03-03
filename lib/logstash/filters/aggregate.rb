@@ -103,23 +103,23 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       end
 
       # timeout management : define default_timeout
-      if !@timeout.nil? && (@current_pipeline.default_timeout.nil? || @timeout < @current_pipeline.default_timeout)
+      if @timeout && (@current_pipeline.default_timeout.nil? || @timeout < @current_pipeline.default_timeout)
         @current_pipeline.default_timeout = @timeout
         @logger.debug("Aggregate default timeout: #{@timeout} seconds")
       end
 
       # inactivity timeout management: make sure it is lower than timeout
-      if !@inactivity_timeout.nil? && ((!@timeout.nil? && @inactivity_timeout > @timeout) || (!@current_pipeline.default_timeout.nil? && @inactivity_timeout > @current_pipeline.default_timeout))
+      if @inactivity_timeout && ((@timeout && @inactivity_timeout > @timeout) || (@current_pipeline.default_timeout && @inactivity_timeout > @current_pipeline.default_timeout))
         raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, inactivity_timeout must be lower than timeout"
       end
 
       # reinit pipeline_close_instance (if necessary)
-      if !@current_pipeline.aggregate_maps_path_set && !@current_pipeline.pipeline_close_instance.nil?
+      if !@current_pipeline.aggregate_maps_path_set && @current_pipeline.pipeline_close_instance
         @current_pipeline.pipeline_close_instance = nil
       end
 
       # check if aggregate_maps_path option has already been set on another instance else set @current_pipeline.aggregate_maps_path_set
-      if !@aggregate_maps_path.nil?
+      if @aggregate_maps_path
         if @current_pipeline.aggregate_maps_path_set
           @current_pipeline.aggregate_maps_path_set = false
           raise LogStash::ConfigurationError, "Aggregate plugin: Option 'aggregate_maps_path' must be set on only one aggregate filter"
@@ -130,7 +130,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       end
 
       # load aggregate maps from file (if option defined)
-      if !@aggregate_maps_path.nil? && File.exist?(@aggregate_maps_path)
+      if @aggregate_maps_path && File.exist?(@aggregate_maps_path)
         File.open(@aggregate_maps_path, "r") { |from_file| @current_pipeline.aggregate_maps.merge!(Marshal.load(from_file)) }
         File.delete(@aggregate_maps_path)
         @logger.info("Aggregate maps loaded from : #{@aggregate_maps_path}")
@@ -156,7 +156,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       # store aggregate maps to file (if option defined)
       @current_pipeline.mutex.synchronize do
         @current_pipeline.aggregate_maps.delete_if { |key, value| value.empty? }
-        if !@aggregate_maps_path.nil? && !@current_pipeline.aggregate_maps.empty?
+        if @aggregate_maps_path && !@current_pipeline.aggregate_maps.empty?
           File.open(@aggregate_maps_path, "w"){ |to_file| Marshal.dump(@current_pipeline.aggregate_maps, to_file) }
           @logger.info("Aggregate maps stored to : #{@aggregate_maps_path}")
         end
@@ -224,7 +224,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     filter_matched(event) if noError
 
     # yield previous map as new event if set
-    yield event_to_yield unless event_to_yield.nil?
+    yield event_to_yield if event_to_yield
 
   end
 
@@ -295,7 +295,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     end
 
     # Launch timeout management only every interval of (@inactivity_timeout / 2) seconds or at Logstash shutdown
-    if @current_pipeline.flush_instance_map[@task_id] == self && !@current_pipeline.aggregate_maps[@task_id].nil? && (!@current_pipeline.last_flush_timestamp_map.has_key?(@task_id) || Time.now > @current_pipeline.last_flush_timestamp_map[@task_id] + @inactivity_timeout / 2 || options[:final])
+    if @current_pipeline.flush_instance_map[@task_id] == self && @current_pipeline.aggregate_maps[@task_id] && (!@current_pipeline.last_flush_timestamp_map.has_key?(@task_id) || Time.now > @current_pipeline.last_flush_timestamp_map[@task_id] + @inactivity_timeout / 2 || options[:final])
       events_to_flush = remove_expired_maps()
 
       # at Logstash shutdown, if push_previous_map_as_event is enabled, it's important to force flush (particularly for jdbc input plugin)
