@@ -36,6 +36,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   config :push_previous_map_as_event, :validate => :boolean, :required => false, :default => false
 
+  config :timeout_timestamp_field, :validate => :string, :required => false
+
   config :timeout_task_id_field, :validate => :string, :required => false
 
   config :timeout_tags, :validate => :array, :required => false, :default => []
@@ -44,7 +46,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # ################## #
   # INSTANCE VARIABLES #
   # ################## #
-  
+
 
   # pointer to current pipeline context
   attr_accessor :current_pipeline
@@ -57,7 +59,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
-  
+
   # Store all shared aggregate attributes per pipeline id
   @@pipelines = {}
 
@@ -77,7 +79,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if !@task_id.match(/%\{.+\}/)
       raise LogStash::ConfigurationError, "Aggregate plugin: task_id pattern '#{@task_id}' must contain a dynamic expression like '%{field}'"
     end
-    
+
     # process lambda expression to call in each filter call
     eval("@codeblock = lambda { |event, map| #{@code} }", binding, "(aggregate filter code)")
 
@@ -87,7 +89,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     end
 
     # init pipeline context
-    @@pipelines[pipeline_id] ||= LogStash::Filters::Aggregate::Pipeline.new();
+    @@pipelines[pipeline_id] ||= LogStash::Filters::Aggregate::Pipeline.new()
     @current_pipeline = @@pipelines[pipeline_id]
 
     @current_pipeline.mutex.synchronize do
@@ -138,8 +140,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
       # init aggregate_maps
       @current_pipeline.aggregate_maps[@task_id] ||= {}
-      
-      
+
     end
   end
 
@@ -182,26 +183,36 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     # protect aggregate_maps against concurrent access, using a mutex
     @current_pipeline.mutex.synchronize do
 
+      # if timeout is based on event timestamp, check if task_id map is expired and should be removed
+      if @timeout_timestamp_field
+        event_to_yield = remove_expired_map_based_on_event_timestamp(task_id, event)
+      end
+
       # retrieve the current aggregate map
       aggregate_maps_element = @current_pipeline.aggregate_maps[@task_id][task_id]
 
-
-      # create aggregate map, if it doesn't exist
+      # case where aggregate map isn't already created
       if aggregate_maps_element.nil?
         return if @map_action == "update"
+
         # create new event from previous map, if @push_previous_map_as_event is enabled
         if @push_previous_map_as_event && !@current_pipeline.aggregate_maps[@task_id].empty?
           event_to_yield = extract_previous_map_as_event()
         end
-        aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(Time.now);
+
+        # create aggregate map
+        creation_timestamp = reference_timestamp(event)
+        aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(creation_timestamp)
         @current_pipeline.aggregate_maps[@task_id][task_id] = aggregate_maps_element
       else
         return if @map_action == "create"
       end
-      map = aggregate_maps_element.map
+
       # update last event timestamp
-      aggregate_maps_element.lastevent_timestamp = Time.now
+      aggregate_maps_element.lastevent_timestamp = reference_timestamp(event)
+
       # execute the code to read/update map and event
+      map = aggregate_maps_element.map
       begin
         @codeblock.call(event, map)
         @logger.debug("Aggregate successful filter code execution", :code => @code)
@@ -225,7 +236,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
     # yield previous map as new event if set
     yield event_to_yield if event_to_yield
-
   end
 
   # Create a new event from the aggregation_map and the corresponding task_id
@@ -279,22 +289,10 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
     @logger.debug("Aggregate flush call with #{options}")
 
-    # Protection against no timeout defined by Logstash conf : define a default eviction instance with timeout = DEFAULT_TIMEOUT seconds
-    if @current_pipeline.default_timeout.nil?
-      @current_pipeline.default_timeout = DEFAULT_TIMEOUT
-    end
-    if !@current_pipeline.flush_instance_map.has_key?(@task_id)
-      @current_pipeline.flush_instance_map[@task_id] = self
-      @timeout = @current_pipeline.default_timeout
-    elsif @current_pipeline.flush_instance_map[@task_id].timeout.nil?
-      @current_pipeline.flush_instance_map[@task_id].timeout = @current_pipeline.default_timeout
-    end
-
-    if @current_pipeline.flush_instance_map[@task_id].inactivity_timeout.nil?
-      @current_pipeline.flush_instance_map[@task_id].inactivity_timeout = @current_pipeline.flush_instance_map[@task_id].timeout
-    end
-
-    # Launch timeout management only every interval of (@inactivity_timeout / 2) seconds or at Logstash shutdown
+    # init flush/timeout properties for current pipeline
+    init_pipeline_timeout_management()
+    
+    # launch timeout management only every interval of (@inactivity_timeout / 2) seconds or at Logstash shutdown
     if @current_pipeline.flush_instance_map[@task_id] == self && @current_pipeline.aggregate_maps[@task_id] && (!@current_pipeline.last_flush_timestamp_map.has_key?(@task_id) || Time.now > @current_pipeline.last_flush_timestamp_map[@task_id] + @inactivity_timeout / 2 || options[:final])
       events_to_flush = remove_expired_maps()
 
@@ -318,9 +316,32 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     else
       return []
     end
+  end
+  
+  # init flush/timeout properties for current pipeline
+  def init_pipeline_timeout_management()
+    
+    # Define default timeout (if not defined by user)
+    if @current_pipeline.default_timeout.nil?
+      @current_pipeline.default_timeout = DEFAULT_TIMEOUT
+    end
+    
+    # Define default flush instance that manages timeout (if not defined by user)
+    if !@current_pipeline.flush_instance_map.has_key?(@task_id)
+      @current_pipeline.flush_instance_map[@task_id] = self
+    end
+
+    # Define timeout and inactivity_timeout (if not defined by user)
+    if @current_pipeline.flush_instance_map[@task_id] == self
+      if @timeout.nil?
+        @timeout = @current_pipeline.default_timeout
+      end
+      if @inactivity_timeout.nil?
+        @inactivity_timeout = @timeout
+      end
+    end
 
   end
-
 
   # Remove the expired Aggregate maps from @current_pipeline.aggregate_maps if they are older than timeout or if no new event has been received since inactivity_timeout.
   # If @push_previous_map_as_event option is set, or @push_map_as_event_on_timeout is set, expired maps are returned as new events to be flushed to Logstash pipeline.
@@ -334,7 +355,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @logger.debug("Aggregate remove_expired_maps call with '#{@task_id}' pattern and #{@current_pipeline.aggregate_maps[@task_id].length} maps")
 
       @current_pipeline.aggregate_maps[@task_id].delete_if do |key, element|
-        if element.creation_timestamp < min_timestamp || element.lastevent_timestamp < min_inactivity_timestamp
+        if element.creation_timestamp + element.difference_from_creation_to_now < min_timestamp || element.lastevent_timestamp + element.difference_from_creation_to_now < min_inactivity_timestamp
           if @push_previous_map_as_event || @push_map_as_event_on_timeout
             events_to_flush << create_timeout_event(element.map, key)
           end
@@ -347,6 +368,33 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     return events_to_flush
   end
 
+  # Remove the expired Aggregate map associated to task_id if it is older than timeout or if no new event has been received since inactivity_timeout (relative to current event timestamp).
+  # If @push_previous_map_as_event option is set, or @push_map_as_event_on_timeout is set, expired map is returned as new event to be flushed to Logstash pipeline.
+  def remove_expired_map_based_on_event_timestamp(task_id, event)
+
+    @logger.debug("Aggregate remove_expired_map_based_on_event_timestamp call with task_id : '#{@task_id}'")
+
+    # get aggregate map element
+    element = @current_pipeline.aggregate_maps[@task_id][task_id]
+    return nil if element.nil?
+
+    init_pipeline_timeout_management()
+
+    event_to_flush = nil
+    event_timestamp = reference_timestamp(event)
+    min_timestamp = event_timestamp - @timeout
+    min_inactivity_timestamp = event_timestamp - @inactivity_timeout
+
+    if element.creation_timestamp < min_timestamp || element.lastevent_timestamp < min_inactivity_timestamp
+      if @push_previous_map_as_event || @push_map_as_event_on_timeout
+        event_to_flush = create_timeout_event(element.map, task_id)
+      end
+      @current_pipeline.aggregate_maps[@task_id].delete(task_id)
+    end
+
+    return event_to_flush
+  end
+
   # return if this filter instance has any timeout option enabled in logstash configuration
   def has_timeout_options?()
     return (
@@ -355,6 +403,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       timeout_code ||
       push_map_as_event_on_timeout ||
       push_previous_map_as_event ||
+      timeout_timestamp_field ||
       timeout_task_id_field ||
       !timeout_tags.empty?
     )
@@ -368,11 +417,12 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       "timeout_code",
       "push_map_as_event_on_timeout",
       "push_previous_map_as_event",
+      "timeout_timestamp_field",
       "timeout_task_id_field",
       "timeout_tags"
     ].join(", ")
   end
-  
+
   # return current pipeline id
   def pipeline_id()
     if @execution_context
@@ -382,45 +432,52 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     end
   end
 
+  # compute and return "reference" timestamp to compute timeout :
+  # by default "system current time" or event timestamp if timeout_timestamp_field option is defined
+  def reference_timestamp(event)
+    return (@timeout_timestamp_field) ? event.get(@timeout_timestamp_field).time : Time.now
+  end
+
 end # class LogStash::Filters::Aggregate
 
 # Element of "aggregate_maps"
 class LogStash::Filters::Aggregate::Element
 
-  attr_accessor :creation_timestamp, :lastevent_timestamp, :map
+  attr_accessor :creation_timestamp, :lastevent_timestamp, :difference_from_creation_to_now, :map
 
   def initialize(creation_timestamp)
     @creation_timestamp = creation_timestamp
     @lastevent_timestamp = creation_timestamp
+    @difference_from_creation_to_now = (Time.now - creation_timestamp).to_i
     @map = {}
   end
 end
 
 # shared aggregate attributes for each pipeline
 class LogStash::Filters::Aggregate::Pipeline
-  
+
   attr_accessor :aggregate_maps, :mutex, :default_timeout, :flush_instance_map, :last_flush_timestamp_map, :aggregate_maps_path_set, :pipeline_close_instance
 
   def initialize()
     # Stores all aggregate maps, per task_id pattern, then per task_id value
     @aggregate_maps = {}
-  
+
     # Mutex used to synchronize access to 'aggregate_maps'
     @mutex = Mutex.new
-  
+
     # Default timeout for task_id patterns where timeout is not defined in Logstash filter configuration
     @default_timeout = nil
-  
+
     # For each "task_id" pattern, defines which Aggregate instance will process flush() call, processing expired Aggregate elements (older than timeout)
     # For each entry, key is "task_id pattern" and value is "aggregate instance"
     @flush_instance_map = {}
-  
+
     # last time where timeout management in flush() method was launched, per "task_id" pattern
     @last_flush_timestamp_map = {}
-  
+
     # flag indicating if aggregate_maps_path option has been already set on one aggregate instance
     @aggregate_maps_path_set = false
-  
+
     # defines which Aggregate instance will close Aggregate variables associated to current pipeline
     @pipeline_close_instance = nil
   end

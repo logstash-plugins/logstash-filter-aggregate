@@ -163,6 +163,7 @@ describe LogStash::Filters::Aggregate do
     describe "no timeout defined in none filter" do
       it "defines a default timeout on a default filter" do
         reset_timeout_management()
+        @end_filter.timeout = nil
         expect(taskid_eviction_instance).to be_nil
         @end_filter.flush()
         expect(taskid_eviction_instance).to eq(@end_filter)
@@ -332,7 +333,10 @@ describe LogStash::Filters::Aggregate do
       it "should push previous map as new event" do
         push_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['ppm_id'] = event.get('ppm_id')", "push_previous_map_as_event" => true, "timeout" => 5, "timeout_task_id_field" => "timeout_task_id_field" })
         push_filter.filter(event({"ppm_id" => "1"})) { |yield_event| fail "task 1 shouldn't have yield event" }
-        push_filter.filter(event({"ppm_id" => "2"})) { |yield_event| expect(yield_event.get("ppm_id")).to eq("1") ; expect(yield_event.get("timeout_task_id_field")).to eq("1") }
+        push_filter.filter(event({"ppm_id" => "2"})) do |yield_event| 
+          expect(yield_event.get("ppm_id")).to eq("1")
+          expect(yield_event.get("timeout_task_id_field")).to eq("1")
+        end
         expect(aggregate_maps["%{ppm_id}"].size).to eq(1)
       end
     end
@@ -367,5 +371,22 @@ describe LogStash::Filters::Aggregate do
     end
   end
 
+  context "timeout_timestamp_field option is defined, " do
+    describe "when 3 old events arrive, " do
+      it "should push a new aggregated event using timeout based on events timestamp" do
+        agg_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['sql_duration'] ||= 0; map['sql_duration'] += event.get('duration')", "timeout_timestamp_field" => "@timestamp", "push_map_as_event_on_timeout" => true, "timeout" => 120 })
+        agg_filter.filter(event({"ppm_id" => "1", "duration" => 2, "@timestamp" => timestamp("2018-01-31T00:00:00Z")})) { |yield_event| fail "it shouldn't have yield event" }
+        agg_filter.filter(event({"ppm_id" => "1", "duration" => 3, "@timestamp" => timestamp("2018-01-31T00:00:01Z")})) { |yield_event| fail "it shouldn't have yield event" }
+        events_to_flush = agg_filter.flush()
+        expect(events_to_flush).to be_empty
+        agg_filter.filter(event({"ppm_id" => "1", "duration" => 4, "@timestamp" => timestamp("2018-01-31T00:05:00Z")})) do |yield_event| 
+          expect(yield_event).not_to be_nil
+          expect(yield_event.get("sql_duration")).to eq(5)
+        end
+        expect(aggregate_maps["%{ppm_id}"].size).to eq(1)
+        expect(aggregate_maps["%{ppm_id}"]["1"].map["sql_duration"]).to eq(4)
+      end
+    end
+  end
 
 end
