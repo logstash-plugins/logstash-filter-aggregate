@@ -1,3 +1,7 @@
+## 2.8.0
+  - new feature: add 'timeout_timestamp_field' option.  
+    When set, this option lets to compute timeout based on event timestamp field (and not system time). It's particularly useful when processing old logs.
+
 ## 2.7.2
   - bugfix: fix synchronisation issue at Logstash shutdown (#75)
 
@@ -24,7 +28,8 @@
 - docs: bump patch level for doc build
 
 ## 2.6.0
-- new feature: 'inactivity_timeout'. Events for a given `task_id` will be aggregated for as long as they keep arriving within the defined `inactivity_timeout` option - the inactivity timeout is reset each time a new event happens. On the contrary, `timeout` is never reset and happens after `timeout` seconds since aggregation map creation.
+- new feature: add 'inactivity_timeout' option.  
+  Events for a given `task_id` will be aggregated for as long as they keep arriving within the defined `inactivity_timeout` option - the inactivity timeout is reset each time a new event happens. On the contrary, `timeout` is never reset and happens after `timeout` seconds since aggregation map creation.
 
 ## 2.5.2
 - bugfix: fix 'aggregate_maps_path' load (issue #62). Re-start of Logstash died when no data were provided in 'aggregate_maps_path' file for some aggregate task_id patterns
