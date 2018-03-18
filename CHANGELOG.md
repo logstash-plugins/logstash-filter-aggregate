@@ -1,9 +1,10 @@
 ## 2.8.0
-  - new feature: add 'timeout_timestamp_field' option.  
-    When set, this option lets to compute timeout based on event timestamp field (and not system time). It's particularly useful when processing old logs.
+  - new feature: add 'timeout_timestamp_field' option (fix issue [#81](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/81))  
+    When set, this option lets to compute timeout based on event timestamp field (and not system time).  
+    It's particularly useful when processing old logs.
 
 ## 2.7.2
-  - bugfix: fix synchronisation issue at Logstash shutdown (#75)
+  - bugfix: fix synchronisation issue at Logstash shutdown (issue [#75](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/75))
 
 ## 2.7.1
   - docs: update gemspec summary
@@ -32,7 +33,7 @@
   Events for a given `task_id` will be aggregated for as long as they keep arriving within the defined `inactivity_timeout` option - the inactivity timeout is reset each time a new event happens. On the contrary, `timeout` is never reset and happens after `timeout` seconds since aggregation map creation.
 
 ## 2.5.2
-- bugfix: fix 'aggregate_maps_path' load (issue #62). Re-start of Logstash died when no data were provided in 'aggregate_maps_path' file for some aggregate task_id patterns
+- bugfix: fix 'aggregate_maps_path' load (issue [#62](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/62)). Re-start of Logstash died when no data were provided in 'aggregate_maps_path' file for some aggregate task_id patterns
 - enhancement: at Logstash startup, check that 'task_id' option contains a field reference expression (else raise error)
 - docs: enhance examples
 - docs: precise that tasks are tied to their task_id pattern, even if they have same task_id value
@@ -50,7 +51,7 @@
  - breaking: need Logstash 2.4 or later  
 
 ## 2.4.0
- - new feature: You can now define timeout options per task_id pattern (#42)  
+ - new feature: You can now define timeout options per task_id pattern (fix issue [#42](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/42))  
  timeout options are : `timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_task_id_field, timeout_tags`
  - validation: a configuration error is thrown at startup if you define any timeout option on several aggregate filters for the same task_id pattern
  - breaking: if you use `aggregate_maps_path` option, storage format has changed. So you have to delete `aggregate_maps_path` file before starting Logstash
@@ -84,14 +85,14 @@
  - internal,deps: New dependency requirements for logstash-core for the 5.0 release
 
 ## 2.0.3
- - bugfix: fix issue #10 : numeric task_id is now well processed
+ - bugfix: fix issue [#10](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/10) : numeric task_id is now well processed
 
 ## 2.0.2
- - bugfix: fix issue #5 : when code call raises an exception, the error is logged and the event is tagged '_aggregateexception'. It avoids logstash crash.
+ - bugfix: fix issue [#5](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/5) : when code call raises an exception, the error is logged and the event is tagged '_aggregateexception'. It avoids logstash crash.
 
 ## 2.0.0
- - internal: Plugins were updated to follow the new shutdown semantic, this mainly allows Logstash to instruct input plugins to terminate gracefully, 
-   instead of using Thread.raise on the plugins' threads. Ref: https://github.com/elastic/logstash/pull/3895
+ - internal: Plugins were updated to follow the new shutdown semantic, this mainly allows Logstash to instruct input plugins to terminate gracefully, instead of using Thread.raise on the plugins' threads.  
+   Ref: https://github.com/elastic/logstash/pull/3895
  - internal,deps: Dependency on logstash-core update to 2.0
 
 ## 0.1.3
