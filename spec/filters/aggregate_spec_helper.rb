@@ -5,6 +5,10 @@ def event(data = {})
 	LogStash::Event.new(data)
 end
 
+def timestamp(iso8601)
+  LogStash::Timestamp.new(iso8601)
+end
+
 def start_event(data = {})
 	data["logger"] = "TASK_START"
 	event(data)
