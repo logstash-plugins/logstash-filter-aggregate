@@ -20,7 +20,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   config :code, :validate => :string, :required => true
 
-  config :map_action, :validate => :string, :default => "create_or_update"
+  config :map_action, :validate => ["create", "update", "create_or_update"], :default => "create_or_update"
 
   config :end_of_task, :validate => :boolean, :default => false
 
