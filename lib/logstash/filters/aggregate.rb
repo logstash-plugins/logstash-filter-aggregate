@@ -428,7 +428,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if @execution_context
       return @execution_context.pipeline_id
     else
-      return pipeline_id = "main"
+      return "main"
     end
   end
 
