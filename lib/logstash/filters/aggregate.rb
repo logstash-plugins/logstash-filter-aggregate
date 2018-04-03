@@ -140,6 +140,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
       # init aggregate_maps
       @current_pipeline.aggregate_maps[@task_id] ||= {}
+      update_aggregate_maps_metric()
 
     end
   end
@@ -204,6 +205,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         creation_timestamp = reference_timestamp(event)
         aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(creation_timestamp)
         @current_pipeline.aggregate_maps[@task_id][task_id] = aggregate_maps_element
+        update_aggregate_maps_metric()
       else
         return if @map_action == "create"
       end
@@ -224,10 +226,12 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
                       :map => map,
                       :event_data => event.to_hash_with_metadata)
         event.tag("_aggregateexception")
+        metric.increment(:code_errors)
       end
 
       # delete the map if task is ended
       @current_pipeline.aggregate_maps[@task_id].delete(task_id) if @end_of_task
+      update_aggregate_maps_metric()
 
     end
 
@@ -255,7 +259,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
     LogStash::Util::Decorators.add_tags(@timeout_tags, event_to_yield, "filters/#{self.class.name}")
 
-    # Call code block if available
+
+    # Call timeout code block if available
     if @timeout_code
       begin
         @timeout_codeblock.call(event_to_yield)
@@ -265,8 +270,11 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
                       :timeout_code => @timeout_code,
                       :timeout_event_data => event_to_yield.to_hash_with_metadata)
         event_to_yield.tag("_aggregateexception")
+        metric.increment(:timeout_code_errors)
       end
     end
+
+    metric.increment(:pushed_events)
 
     return event_to_yield
   end
@@ -276,6 +284,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     previous_entry = @current_pipeline.aggregate_maps[@task_id].shift()
     previous_task_id = previous_entry[0]
     previous_map = previous_entry[1].map
+    update_aggregate_maps_metric()
     return create_timeout_event(previous_map, previous_task_id)
   end
 
@@ -302,6 +311,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
           events_to_flush << extract_previous_map_as_event()
         end
       end
+      
+      update_aggregate_maps_metric()
 
       # tag flushed events, indicating "final flush" special event
       if options[:final]
@@ -359,6 +370,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
           if @push_previous_map_as_event || @push_map_as_event_on_timeout
             events_to_flush << create_timeout_event(element.map, key)
           end
+          metric.increment(:task_timeouts)
           next true
         end
         next false
@@ -390,6 +402,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         event_to_flush = create_timeout_event(element.map, task_id)
       end
       @current_pipeline.aggregate_maps[@task_id].delete(task_id)
+      metric.increment(:task_timeouts)
     end
 
     return event_to_flush
@@ -436,6 +449,14 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # by default "system current time" or event timestamp if timeout_timestamp_field option is defined
   def reference_timestamp(event)
     return (@timeout_timestamp_field) ? event.get(@timeout_timestamp_field).time : Time.now
+  end
+
+  # update "aggregate_maps" metric, with aggregate maps count associated to configured taskid pattern 
+  def update_aggregate_maps_metric()
+    aggregate_maps = @current_pipeline.aggregate_maps[@task_id]
+    if aggregate_maps
+      metric.gauge(:aggregate_maps, aggregate_maps.length)
+    end
   end
 
 end # class LogStash::Filters::Aggregate
