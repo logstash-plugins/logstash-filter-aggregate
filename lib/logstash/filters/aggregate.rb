@@ -346,6 +346,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if @current_pipeline.flush_instance_map[@task_id] == self
       if @timeout.nil?
         @timeout = @current_pipeline.default_timeout
+        @logger.debug("Aggregate timeout for '#{@task_id}' pattern: #{@timeout} seconds")
       end
       if @inactivity_timeout.nil?
         @inactivity_timeout = @timeout
@@ -370,6 +371,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
           if @push_previous_map_as_event || @push_map_as_event_on_timeout
             events_to_flush << create_timeout_event(element.map, key)
           end
+          @logger.debug("Aggregate remove expired map with task_id=#{key}, timeout=#{@timeout}, inactivity_timeout=#{@inactivity_timeout}")
           metric.increment(:task_timeouts)
           next true
         end
