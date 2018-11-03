@@ -205,7 +205,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
         # create aggregate map
         creation_timestamp = reference_timestamp(event)
-        aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(creation_timestamp)
+        aggregate_maps_element = LogStash::Filters::Aggregate::Element.new(creation_timestamp, task_id)
         @current_pipeline.aggregate_maps[@task_id][task_id] = aggregate_maps_element
         update_aggregate_maps_metric()
       else
@@ -237,7 +237,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
       # process custom timeout set by code block
       if (aggregate_maps_element.timeout || aggregate_maps_element.inactivity_timeout)
-        event_to_yield = process_map_timeout(aggregate_maps_element, task_id)
+        event_to_yield = process_map_timeout(aggregate_maps_element)
       end
 
     end
@@ -251,15 +251,15 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # Process a custom timeout defined in aggregate map element
   # Returns an event to yield if timeout=0 and push_map_as_event_on_timeout=true
-  def process_map_timeout(element, task_id)
+  def process_map_timeout(element)
     event_to_yield = nil
     init_pipeline_timeout_management()
     if (element.timeout == 0 || element.inactivity_timeout == 0)
-      @current_pipeline.aggregate_maps[@task_id].delete(task_id)
+      @current_pipeline.aggregate_maps[@task_id].delete(element.task_id)
       if @current_pipeline.flush_instance_map[@task_id].push_map_as_event_on_timeout
-        event_to_yield = create_timeout_event(element.map, task_id)
+        event_to_yield = create_timeout_event(element.map, element.task_id)
       end
-      @logger.debug("Aggregate remove expired map with task_id=#{task_id} and custom timeout=0")
+      @logger.debug("Aggregate remove expired map with task_id=#{element.task_id} and custom timeout=0")
       metric.increment(:task_timeouts)
       update_aggregate_maps_metric()
     else
@@ -500,14 +500,15 @@ end # class LogStash::Filters::Aggregate
 # Element of "aggregate_maps"
 class LogStash::Filters::Aggregate::Element
 
-  attr_accessor :creation_timestamp, :lastevent_timestamp, :difference_from_creation_to_now, :timeout, :inactivity_timeout, :map
+  attr_accessor :creation_timestamp, :lastevent_timestamp, :difference_from_creation_to_now, :timeout, :inactivity_timeout, :task_id, :map
 
-  def initialize(creation_timestamp)
+  def initialize(creation_timestamp, task_id)
     @creation_timestamp = creation_timestamp
     @lastevent_timestamp = creation_timestamp
     @difference_from_creation_to_now = (Time.now - creation_timestamp).to_i
     @timeout = nil
     @inactivity_timeout = nil
+    @task_id = task_id
     @map = {}
   end
 end
