@@ -1,3 +1,9 @@
+## 2.9.0
+  - new feature: add ability to dynamically define a custom `timeout` or `inactivity_timeout` in `code` block (fix issues [#91](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/91) and [#92](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/92))
+  - new feature: add meta informations available in `code` block through `map_meta` variable
+  - new feature: add Logstash metrics, specific to aggregate plugin: aggregate_maps, pushed_events, task_timeouts, code_errors, timeout_code_errors
+  - new feature: validate at startup that `map_action` option equals to 'create', 'update' or 'create_or_update'
+
 ## 2.8.0
   - new feature: add 'timeout_timestamp_field' option (fix issue [#81](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/81))  
     When set, this option lets to compute timeout based on event timestamp field (and not system time).  
