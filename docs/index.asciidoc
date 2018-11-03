@@ -407,9 +407,10 @@ Available variables are :
 
 `map`: aggregated map associated to `task_id`, containing key/value pairs. Data structure is a ruby http://ruby-doc.org/core-1.9.1/Hash.html[Hash]
 
-`map_meta`: meta informations associated to aggregate map. It allows to dynamically define a custom `timeout` or  `inactivity_timeout`. 
+`map_meta`: meta informations associated to aggregate map. It allows to set a custom `timeout` or `inactivity_timeout`. 
+It allows also to get `creation_timestamp`, `lastevent_timestamp` and `task_id`.
 
-When option push_map_as_event_on_timeout=true, if you set `map_meta.timeout=0` in `code` block, then aggregated map is immediately pushed as a new event
+When option push_map_as_event_on_timeout=true, if you set `map_meta.timeout=0` in `code` block, then aggregated map is immediately pushed as a new event.
 
 Example:
 [source,ruby]
