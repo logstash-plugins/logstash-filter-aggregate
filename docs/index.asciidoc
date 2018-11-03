@@ -397,11 +397,19 @@ Example:
   * Value type is <<string,string>>
   * There is no default value for this setting.
 
-The code to execute to update map, using current event.
+The code to execute to update aggregated map, using current event.
 
-Or on the contrary, the code to execute to update event, using current map.
+Or on the contrary, the code to execute to update event, using aggregated map.
 
-You will have a 'map' variable and an 'event' variable available (that is the event itself).
+Available variables are :
+
+`event`: current Logstash event
+
+`map`: aggregated map associated to `task_id`, containing key/value pairs. Data structure is a ruby http://ruby-doc.org/core-1.9.1/Hash.html[Hash]
+
+`map_meta`: meta informations associated to aggregate map. It allows to dynamically define a custom `timeout` or  `inactivity_timeout`. 
+
+When option push_map_as_event_on_timeout=true, if you set `map_meta.timeout=0` in `code` block, then aggregated map is immediately pushed as a new event
 
 Example:
 [source,ruby]
