@@ -389,4 +389,35 @@ describe LogStash::Filters::Aggregate do
     end
   end
 
+  context "custom timeout on map_meta, " do
+    describe "when map_meta.timeout=0, " do
+      it "should push a new aggregated event immediately" do
+        agg_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['sql_duration'] = 2; map_meta.timeout = 0", "push_map_as_event_on_timeout" => true, "timeout" => 120 })
+        agg_filter.filter(event({"ppm_id" => "1"})) do |yield_event| 
+          expect(yield_event).not_to be_nil
+          expect(yield_event.get("sql_duration")).to eq(2)
+        end
+        expect(aggregate_maps["%{ppm_id}"]).to be_empty
+      end
+    end
+    describe "when map_meta.timeout=0 and push_map_as_event_on_timeout=false, " do
+      it "should just remove expired map and not push an aggregated event" do
+        agg_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map_meta.timeout = 0", "push_map_as_event_on_timeout" => false, "timeout" => 120 })
+        agg_filter.filter(event({"ppm_id" => "1"}))  { |yield_event| fail "it shouldn't have yield event" } 
+        expect(aggregate_maps["%{ppm_id}"]).to be_empty
+      end
+    end
+    describe "when map_meta.inactivity_timeout=1, " do
+      it "should push a new aggregated event at next flush call" do
+        agg_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "map['sql_duration'] = 2; map_meta.inactivity_timeout = 1", "push_map_as_event_on_timeout" => true, "timeout" => 120 })
+        agg_filter.filter(event({"ppm_id" => "1"})) { |yield_event| fail "it shouldn't have yield event" }
+        expect(aggregate_maps["%{ppm_id}"].size).to eq(1)
+        sleep(2)
+        events_to_flush = agg_filter.flush()
+        expect(events_to_flush.size).to eq(1)
+        expect(aggregate_maps["%{ppm_id}"]).to be_empty
+      end
+    end
+  end
+
 end
