@@ -249,7 +249,7 @@ In that case, you don't want to wait task timeout to flush aggregation map.
 
 Fifth use case: like example #3, there is no end event.
 
-Events keep comming for an indefinite time and you want to push the aggregation map as soon as possible after the last user interaction without waiting for the `timeout`.
+Events keep coming for an indefinite time and you want to push the aggregation map as soon as possible after the last user interaction without waiting for the `timeout`.
 
 This allows to have the aggregated events pushed closer to real time.
 
@@ -295,7 +295,7 @@ filter {
    code => "map['clicks'] ||= 0; map['clicks'] += 1;"
    push_map_as_event_on_timeout => true
    timeout_task_id_field => "user_id"
-   timeout => 3600 # 1 hour timeout, user activity will be considered finished one hour after the first event, even if events keep comming
+   timeout => 3600 # 1 hour timeout, user activity will be considered finished one hour after the first event, even if events keep coming
    inactivity_timeout => 300 # 5 minutes timeout, user activity will be considered finished if no new events arrive 5 minutes after the last event
    timeout_tags => ['_aggregatetimeout']
    timeout_code => "event.set('several_clicks', event.get('clicks') > 1)"
