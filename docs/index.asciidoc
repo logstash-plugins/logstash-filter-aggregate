@@ -326,7 +326,7 @@ filter {
 * in the final event, you can execute a last code (for instance, add map data to final event)
 * after the final event, the map attached to task is deleted (thanks to `end_of_task => true`)
 * an aggregate map is tied to one task_id value which is tied to one task_id pattern. So if you have 2 filters with different task_id patterns, even if you have same task_id value, they won't share the same aggregate map.
-* in one filter configuration, it is recommanded to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
+* in one filter configuration, it is recommended to define a timeout option to protect the feature against unterminated tasks. It tells the filter to delete expired maps
 * if no timeout is defined, by default, all maps older than 1800 seconds are automatically deleted
 * all timeout options have to be defined in only one aggregate filter per task_id pattern (per pipeline). Timeout options are : timeout, inactivity_timeout, timeout_code, push_map_as_event_on_timeout, push_previous_map_as_event, timeout_timestamp_field, timeout_task_id_field, timeout_tags
 * if `code` execution raises an exception, the error is logged and event is tagged '_aggregateexception'
