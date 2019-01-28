@@ -233,7 +233,7 @@ In that case, you don't want to wait task timeout to flush aggregation map.
          map['towns'] << {'town_name' => event.get('town_name')}
          event.cancel()
        "
-       push_previous_map_as_event => true
+       push_map_as_event_on_timeout => true
        timeout => 3
      }
    }
