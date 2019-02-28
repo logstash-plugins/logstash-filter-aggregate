@@ -260,7 +260,7 @@ We can track a user by its ID through the events, however once the user stops in
 
 There is no specific event indicating the end of the user's interaction.
 
-The user ineraction will be considered as ended when no events for the specified user (task_id) arrive after the specified inactivity_timeout`.
+The user interaction will be considered as ended when no events for the specified user (task_id) arrive after the specified inactivity_timeout`.
 
 If the user continues interacting for longer than `timeout` seconds (since first event), the aggregation map will still be deleted and pushed as a new event when timeout occurs.
 
