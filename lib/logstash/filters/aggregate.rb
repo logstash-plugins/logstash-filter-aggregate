@@ -214,7 +214,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
       # update last event timestamp
       aggregate_maps_element.lastevent_timestamp = reference_timestamp(event)
-      aggregate_maps_element.lastevent_timestamp_rtc = Time.now
+      aggregate_maps_element.difference_from_lastevent_to_now = (Time.now - aggregate_maps_element.lastevent_timestamp).to_i
 
       # execute the code to read/update map and event
       map = aggregate_maps_element.map
@@ -396,7 +396,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @current_pipeline.aggregate_maps[@task_id].delete_if do |key, element|
         min_timestamp = element.timeout ? Time.now - element.timeout : default_min_timestamp
         min_inactivity_timestamp = element.inactivity_timeout ? Time.now - element.inactivity_timeout : default_min_inactivity_timestamp
-        if element.creation_timestamp + element.difference_from_creation_to_now < min_timestamp || element.lastevent_timestamp_rtc < min_inactivity_timestamp
+        if element.creation_timestamp + element.difference_from_creation_to_now < min_timestamp || element.lastevent_timestamp + element.difference_from_lastevent_to_now < min_inactivity_timestamp
           if @push_previous_map_as_event || @push_map_as_event_on_timeout
             events_to_flush << create_timeout_event(element.map, key)
           end
@@ -501,13 +501,13 @@ end # class LogStash::Filters::Aggregate
 # Element of "aggregate_maps"
 class LogStash::Filters::Aggregate::Element
 
-  attr_accessor :creation_timestamp, :lastevent_timestamp, :lastevent_timestamp_rtc, :difference_from_creation_to_now, :timeout, :inactivity_timeout, :task_id, :map
+  attr_accessor :creation_timestamp, :lastevent_timestamp, :difference_from_creation_to_now, :difference_from_lastevent_to_now, :timeout, :inactivity_timeout, :task_id, :map
 
   def initialize(creation_timestamp, task_id)
     @creation_timestamp = creation_timestamp
-    @lastevent_timestamp = creation_timestamp
-    @lastevent_timestamp_rtc = Time.now
+    @lastevent_timestamp = creation_timestamp    
     @difference_from_creation_to_now = (Time.now - creation_timestamp).to_i
+    @difference_from_lastevent_to_now = @difference_from_creation_to_now
     @timeout = nil
     @inactivity_timeout = nil
     @task_id = task_id
