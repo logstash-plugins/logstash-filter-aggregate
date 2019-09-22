@@ -1,3 +1,9 @@
+## 2.9.1
+  - bugfix: fix inactivity timeout feature when processing old logs (PR [#103](https://github.com/logstash-plugins/logstash-filter-aggregate/pull/103), thanks @jdratlif for his contribution!)
+  - docs: fix several typos in documentation
+  - docs: enhance example 4 documentation
+  - ci: enhance plugin continuous integration
+
 ## 2.9.0
   - new feature: add ability to dynamically define a custom `timeout` or `inactivity_timeout` in `code` block (fix issues [#91](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/91) and [#92](https://github.com/logstash-plugins/logstash-filter-aggregate/issues/92))
   - new feature: add meta informations available in `code` block through `map_meta` variable
