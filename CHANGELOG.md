@@ -1,3 +1,7 @@
+## 2.9.2
+  - bugfix: remove 'default_timeout' at pipeline level (fix #112)
+  - ci: update travis ci configuration
+
 ## 2.9.1
   - bugfix: fix inactivity timeout feature when processing old logs (PR [#103](https://github.com/logstash-plugins/logstash-filter-aggregate/pull/103), thanks @jdratlif for his contribution!)
   - docs: fix several typos in documentation
