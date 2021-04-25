@@ -106,15 +106,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         @logger.debug("Aggregate timeout for '#{@task_id}' pattern: #{@timeout} seconds")
       end
 
-      # timeout management : define default_timeout
-      if @timeout && (@current_pipeline.default_timeout.nil? || @timeout < @current_pipeline.default_timeout)
-        @current_pipeline.default_timeout = @timeout
-        @logger.debug("Aggregate default timeout: #{@timeout} seconds")
-      end
-
       # inactivity timeout management: make sure it is lower than timeout
-      if @inactivity_timeout && ((@timeout && @inactivity_timeout > @timeout) || (@current_pipeline.default_timeout && @inactivity_timeout > @current_pipeline.default_timeout))
-        raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, inactivity_timeout must be lower than timeout"
+      if @inactivity_timeout && ((@timeout && @inactivity_timeout > @timeout) || (@timeout.nil? && @inactivity_timeout > DEFAULT_TIMEOUT))
+        raise LogStash::ConfigurationError, "Aggregate plugin: For task_id pattern #{@task_id}, inactivity_timeout (#{@inactivity_timeout}) must be lower than timeout (#{@timeout})"
       end
 
       # reinit pipeline_close_instance (if necessary)
@@ -359,11 +353,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
   # init flush/timeout properties for current pipeline
   def init_pipeline_timeout_management()
     
-    # Define default timeout (if not defined by user)
-    if @current_pipeline.default_timeout.nil?
-      @current_pipeline.default_timeout = DEFAULT_TIMEOUT
-    end
-    
     # Define default flush instance that manages timeout (if not defined by user)
     if !@current_pipeline.flush_instance_map.has_key?(@task_id)
       @current_pipeline.flush_instance_map[@task_id] = self
@@ -372,8 +361,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     # Define timeout and inactivity_timeout (if not defined by user)
     if @current_pipeline.flush_instance_map[@task_id] == self
       if @timeout.nil?
-        @timeout = @current_pipeline.default_timeout
-        @logger.debug("Aggregate timeout for '#{@task_id}' pattern: #{@timeout} seconds")
+        @timeout = DEFAULT_TIMEOUT
+        @logger.debug("Aggregate timeout for '#{@task_id}' pattern: #{@timeout} seconds (default value)")
       end
       if @inactivity_timeout.nil?
         @inactivity_timeout = @timeout
@@ -518,7 +507,7 @@ end
 # shared aggregate attributes for each pipeline
 class LogStash::Filters::Aggregate::Pipeline
 
-  attr_accessor :aggregate_maps, :mutex, :default_timeout, :flush_instance_map, :last_flush_timestamp_map, :aggregate_maps_path_set, :pipeline_close_instance
+  attr_accessor :aggregate_maps, :mutex, :flush_instance_map, :last_flush_timestamp_map, :aggregate_maps_path_set, :pipeline_close_instance
 
   def initialize()
     # Stores all aggregate maps, per task_id pattern, then per task_id value
@@ -526,9 +515,6 @@ class LogStash::Filters::Aggregate::Pipeline
 
     # Mutex used to synchronize access to 'aggregate_maps'
     @mutex = Mutex.new
-
-    # Default timeout for task_id patterns where timeout is not defined in Logstash filter configuration
-    @default_timeout = nil
 
     # For each "task_id" pattern, defines which Aggregate instance will process flush() call, processing expired Aggregate elements (older than timeout)
     # For each entry, key is "task_id pattern" and value is "aggregate instance"

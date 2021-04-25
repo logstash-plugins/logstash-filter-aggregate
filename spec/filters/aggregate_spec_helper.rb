@@ -62,7 +62,6 @@ def aggregate_maps_path_set()
 end
 
 def reset_timeout_management()
-  current_pipeline().default_timeout = nil
   current_pipeline().flush_instance_map.clear()
   current_pipeline().last_flush_timestamp_map.clear()
 end
