@@ -83,7 +83,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     end
 
     # process lambda expression to call in each filter call
-    eval("@codeblock = lambda { |event, map, map_meta| #{@code} }", binding, "(aggregate filter code)")
+    eval("@codeblock = lambda { |event, map, map_meta, &new_event_block| #{@code} }", binding, "(aggregate filter code)")
 
     # process lambda expression to call in the timeout case or previous event case
     if @timeout_code
@@ -168,7 +168,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # This method is invoked each time an event matches the filter
   public
-  def filter(event)
+  def filter(event, &new_event_block)
 
     # define task id
     task_id = event.sprintf(@task_id)
@@ -213,7 +213,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       # execute the code to read/update map and event
       map = aggregate_maps_element.map
       begin
-        @codeblock.call(event, map, aggregate_maps_element)
+        @codeblock.call(event, map, aggregate_maps_element, &new_event_block)
         @logger.debug("Aggregate successful filter code execution", :code => @code)
         noError = true
       rescue => exception
