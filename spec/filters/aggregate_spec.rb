@@ -420,4 +420,17 @@ describe LogStash::Filters::Aggregate do
     end
   end
 
+  context "Custom event generation code is used" do
+    describe "when a new event is manually generated" do
+      it "should push a new event immediately" do
+        agg_filter = setup_filter({ "task_id" => "%{task_id}", "code" => "map['sql_duration'] = 2; new_event_block.call(LogStash::Event.new({:my_sql_duration => map['sql_duration']}))", "timeout" => 120 })
+        agg_filter.filter(event({"task_id" => "1"})) do |yield_event|
+          expect(yield_event).not_to be_nil
+          expect(yield_event.get("my_sql_duration")).to eq(2)
+        end
+      end
+    end
+
+  end
+
 end

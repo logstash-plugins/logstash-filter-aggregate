@@ -402,7 +402,7 @@ The code to execute to update aggregated map, using current event.
 
 Or on the contrary, the code to execute to update event, using aggregated map.
 
-Available variables are :
+Available variables are:
 
 `event`: current Logstash event
 
@@ -411,8 +411,6 @@ Available variables are :
 `map_meta`: meta informations associated to aggregate map. It allows to set a custom `timeout` or `inactivity_timeout`. 
 It allows also to get `creation_timestamp`, `lastevent_timestamp` and `task_id`.
 
-When option push_map_as_event_on_timeout=true, if you set `map_meta.timeout=0` in `code` block, then aggregated map is immediately pushed as a new event.
-
 Example:
 [source,ruby]
     filter {
@@ -420,6 +418,29 @@ Example:
         code => "map['sql_duration'] += event.get('duration')"
       }
     }
+
+
+To create additional events during the code block, to be emitted immediatly, a specific syntax must be used, like in the following example:
+
+[source,ruby]
+    filter {
+      aggregate {
+        code => "
+            data = {:my_sql_duration => map['sql_duration']}
+            generated_event = LogStash::Event.new(data)
+            generated_event.set('my_other_field', 34)
+            new_event_block.call(generated_event)
+        "
+      }
+    }
+
+The parameter to the function `new_event_block.call` must be of type `LogStash::Event`.
+To creare such object the costructor of the same class can be used, like `LogStash::Event.new()`.
+
+`LogStash::Event.new()` can receive a parameter of type ruby `Hash` to inizialize the new event fields.
+
+When option push_map_as_event_on_timeout=true, if you set `map_meta.timeout=0` in `code` block, then aggregated map is immediately pushed as a new event.
+
 
 [id="plugins-{type}s-{plugin}-end_of_task"]
 ===== `end_of_task`
