@@ -411,7 +411,7 @@ Available variables are:
 `map_meta`: meta informations associated to aggregate map. It allows to set a custom `timeout` or `inactivity_timeout`. 
 It allows also to get `creation_timestamp`, `lastevent_timestamp` and `task_id`.
 
-`new_event_block`: ruby block used to create new Logstash events. See the following example on how to use it.
+`new_event_block`: block used to emit new Logstash events. See the second example on how to use it.
 
 When option push_map_as_event_on_timeout=true, if you set `map_meta.timeout=0` in `code` block, then aggregated map is immediately pushed as a new event.
 
@@ -425,7 +425,7 @@ Example:
     }
 
 
-To create additional events during the code block, to be emitted immediately, a specific syntax must be used, like in the following example:
+To create additional events during the code execution, to be emitted immediately, you can use `new_event_block.call(event)` function, like in the following example:
 
 [source,ruby]
     filter {
@@ -439,9 +439,8 @@ To create additional events during the code block, to be emitted immediately, a 
       }
     }
 
-The parameter to the function `new_event_block.call` must be of type `LogStash::Event`.
-To create such object the constructor of the same class can be used, like `LogStash::Event.new()`.
-
+The parameter of the function `new_event_block.call` must be of type `LogStash::Event`.  
+To create such an object, the constructor of the same class can be used: `LogStash::Event.new()`.  
 `LogStash::Event.new()` can receive a parameter of type ruby http://ruby-doc.org/core-1.9.1/Hash.html[Hash] to initialize the new event fields.
 
 
