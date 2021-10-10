@@ -1,3 +1,6 @@
+## 2.10.0
+  - new feature: add ability to generate new event during code execution (#116)
+
 ## 2.9.2
   - bugfix: remove 'default_timeout' at pipeline level (fix #112)
   - ci: update travis ci configuration
