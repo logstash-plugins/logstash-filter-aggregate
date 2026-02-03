@@ -1,5 +1,5 @@
-## 2.10.1
-  - new feature: add warning log when the number of tasks stored in memory exceeds the configured threshold (#125)
+## 2.11.0
+  - new feature: log a warning message when the number of tasks stored in memory exceeds the configured threshold (#125)
 
 ## 2.10.0
   - new feature: add ability to generate new event during code execution (#116)
