@@ -44,8 +44,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   config :map_count_warning_threshold, :validate => :number, :required => false, :default => 5000
 
-  config :map_count_warning_interval, :validate => :number, :required => false, :default => 1000
-
 
   # ################## #
   # INSTANCE VARIABLES #
@@ -65,6 +63,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
+
+  # Warning frequency divisor: warn every (threshold / divisor) events when above threshold
+  WARNING_FREQUENCY_DIVISOR = 5
 
   # Store all shared aggregate attributes per pipeline id
   @@pipelines = {}
@@ -142,6 +143,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @current_pipeline.aggregate_maps[@task_id] ||= {}
       update_aggregate_maps_metric()
 
+      # calculate warning frequency (warn every threshold/divisor events, minimum 1)
+      @map_count_warning_frequency = [@map_count_warning_threshold / WARNING_FREQUENCY_DIVISOR, 1].max
+
     end
   end
 
@@ -184,7 +188,6 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     # protect aggregate_maps against concurrent access, using a mutex
     @current_pipeline.mutex.synchronize do
 
-      # check for memory warning
       check_map_count_warning()
 
       # if timeout is based on event timestamp, check if task_id map is expired and should be removed
@@ -505,8 +508,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
                      :map_count => map_count,
                      :threshold => @map_count_warning_threshold)
       end
-      # repeat warning every @map_count_warning_interval events
-      @events_since_last_warning = (@events_since_last_warning + 1) % @map_count_warning_interval
+      @events_since_last_warning = (@events_since_last_warning + 1) % @map_count_warning_frequency
     else
       @events_since_last_warning = 0
     end

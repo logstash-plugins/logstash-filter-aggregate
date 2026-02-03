@@ -452,18 +452,17 @@ describe LogStash::Filters::Aggregate do
         4.times { |i| filter.filter(event({"warn_id" => "task_#{i}"})) }
       end
 
-      it "should log warning every map_count_warning_interval occurrences" do
-        filter = setup_filter({ "task_id" => "%{warn_id}", "code" => "", "map_count_warning_threshold" => 3, "map_count_warning_interval" => 2 })
+      it "should log warning every 20% of map_count_warning_threshold occurrences" do
+        filter = setup_filter({ "task_id" => "%{warn_id}", "code" => "", "map_count_warning_threshold" => 5 })
         expect(filter.logger).to receive(:warn).twice
-        6.times { |i| filter.filter(event({"warn_id" => "task_#{i}"})) }
+        7.times { |i| filter.filter(event({"warn_id" => "task_#{i}"})) }
       end
     end
 
     describe "when using default threshold" do
-      it "should have default threshold of 5000 and default warning interval of 1000" do
+      it "should have default threshold of 5000" do
         filter = setup_filter({ "task_id" => "%{warn_id}", "code" => "" })
         expect(filter.map_count_warning_threshold).to eq(5000)
-        expect(filter.map_count_warning_interval).to eq(1000)
       end
     end
   end
