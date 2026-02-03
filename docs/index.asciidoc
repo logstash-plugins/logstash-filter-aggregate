@@ -364,6 +364,7 @@ This plugin supports the following configuration options plus the <<plugins-{typ
 | <<plugins-{type}s-{plugin}-timeout_tags>> |<<array,array>>|No
 | <<plugins-{type}s-{plugin}-timeout_task_id_field>> |<<string,string>>|No
 | <<plugins-{type}s-{plugin}-timeout_timestamp_field>> |<<string,string>>|No
+| <<plugins-{type}s-{plugin}-map_count_warning_threshold>> |<<number,number>>|No
 |=======================================================================
 
 Also see <<plugins-{type}s-{plugin}-common-options>> for a list of options supported by all
@@ -611,6 +612,29 @@ Example:
     filter {
       aggregate {
         timeout_timestamp_field => "@timestamp"
+      }
+    }
+
+[id="plugins-{type}s-{plugin}-map_count_warning_threshold"]
+===== `map_count_warning_threshold`
+
+  * Value type is <<number,number>>
+  * Default value is `5000`
+
+Defines the threshold for the number of tasks in memory before a warning is logged.
+When the number of maps for a task_id pattern exceeds this threshold, a warning message is logged to help identify potential memory issues caused by unterminated tasks.
+
+The warning is repeated every 20% of the threshold events (e.g., with threshold 5000, warnings appear every 1000 events while above threshold).
+
+Set to `0` to disable memory warnings.
+
+Example:
+[source,ruby]
+    filter {
+      aggregate {
+        task_id => "%{taskid}"
+        code => "map['count'] ||= 0; map['count'] += 1"
+        map_count_warning_threshold => 10000
       }
     }
 

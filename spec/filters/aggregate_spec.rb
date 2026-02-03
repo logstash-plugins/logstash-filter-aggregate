@@ -433,4 +433,37 @@ describe LogStash::Filters::Aggregate do
 
   end
 
+  context "map_count_warning_threshold option" do
+    describe "when threshold is set to 0 (disabled)" do
+      it "should not log any warning" do
+        filter = setup_filter({ "task_id" => "%{warn_id}", "code" => "", "map_count_warning_threshold" => 0 })
+        expect(filter.logger).not_to receive(:warn)
+        3.times { |i| filter.filter(event({"warn_id" => "task_#{i}"})) }
+      end
+    end
+
+    describe "when map count reaches threshold" do
+      it "should log a warning" do
+        filter = setup_filter({ "task_id" => "%{warn_id}", "code" => "", "map_count_warning_threshold" => 3 })
+        expect(filter.logger).to receive(:warn).with(
+          /Aggregate filter memory warning.*has 3 maps in memory/,
+          hash_including(:task_id_pattern => "%{warn_id}", :map_count => 3, :threshold => 3)
+        ).once
+        4.times { |i| filter.filter(event({"warn_id" => "task_#{i}"})) }
+      end
+
+      it "should log warning every 20% of map_count_warning_threshold occurrences" do
+        filter = setup_filter({ "task_id" => "%{warn_id}", "code" => "", "map_count_warning_threshold" => 5 })
+        expect(filter.logger).to receive(:warn).twice
+        7.times { |i| filter.filter(event({"warn_id" => "task_#{i}"})) }
+      end
+    end
+
+    describe "when using default threshold" do
+      it "should have default threshold of 5000" do
+        filter = setup_filter({ "task_id" => "%{warn_id}", "code" => "" })
+        expect(filter.map_count_warning_threshold).to eq(5000)
+      end
+    end
+  end
 end

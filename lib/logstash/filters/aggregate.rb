@@ -42,6 +42,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   config :timeout_tags, :validate => :array, :required => false, :default => []
 
+  config :map_count_warning_threshold, :validate => :number, :required => false, :default => 5000
+
 
   # ################## #
   # INSTANCE VARIABLES #
@@ -61,6 +63,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
   # Default timeout (in seconds) when not defined in plugin configuration
   DEFAULT_TIMEOUT = 1800
+
+  # Warning frequency divisor: warn every (threshold / divisor) events when above threshold
+  WARNING_FREQUENCY_DIVISOR = 5
 
   # Store all shared aggregate attributes per pipeline id
   @@pipelines = {}
@@ -138,6 +143,9 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
       @current_pipeline.aggregate_maps[@task_id] ||= {}
       update_aggregate_maps_metric()
 
+      # calculate warning frequency (warn every threshold/divisor events, minimum 1)
+      @map_count_warning_frequency = [@map_count_warning_threshold / WARNING_FREQUENCY_DIVISOR, 1].max
+
     end
   end
 
@@ -179,6 +187,8 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
 
     # protect aggregate_maps against concurrent access, using a mutex
     @current_pipeline.mutex.synchronize do
+
+      check_map_count_warning()
 
       # if timeout is based on event timestamp, check if task_id map is expired and should be removed
       if @timeout_timestamp_field
@@ -483,6 +493,26 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
     if aggregate_maps
       metric.gauge(:aggregate_maps, aggregate_maps.length)
     end
+  end
+
+  # checks if map count exceeds warning threshold and logs a warning if so
+  def check_map_count_warning()
+    return if @map_count_warning_threshold == 0
+
+    map_count = @current_pipeline.aggregate_maps[@task_id].length
+    if map_count >= @map_count_warning_threshold
+      @events_since_last_warning ||= 0
+      if @events_since_last_warning == 0
+        @logger.warn("Aggregate filter memory warning: task_id pattern '#{@task_id}' has #{map_count} maps in memory (threshold: #{@map_count_warning_threshold}).",
+                     :task_id_pattern => @task_id,
+                     :map_count => map_count,
+                     :threshold => @map_count_warning_threshold)
+      end
+      @events_since_last_warning = (@events_since_last_warning + 1) % @map_count_warning_frequency
+    else
+      @events_since_last_warning = 0
+    end
+
   end
 
 end # class LogStash::Filters::Aggregate
