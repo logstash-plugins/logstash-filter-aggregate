@@ -129,6 +129,7 @@ class LogStash::Filters::Aggregate < LogStash::Filters::Base
         else
           @current_pipeline.aggregate_maps_path_set = true
           @current_pipeline.pipeline_close_instance = self
+          @aggregate_maps_path=@aggregate_maps_path+"_"+execution_context.pipeline.pipeline_id
         end
       end
 
