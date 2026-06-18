@@ -356,7 +356,7 @@ describe LogStash::Filters::Aggregate do
     end
 
     describe "when Logstash shutdown happens, " do
-      it "flush method should return last map as new event even if timeout has not occured" do
+      it "flush method should return last map as new event even if timeout has not occurred" do
         push_filter = setup_filter({ "task_id" => "%{ppm_id}", "code" => "", "push_previous_map_as_event" => true, "timeout" => 4 })
         push_filter.filter(event({"ppm_id" => "1"}))
         events_to_flush = push_filter.flush({:final=>false})
