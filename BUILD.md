@@ -13,7 +13,7 @@ Logstash provides infrastructure to automatically generate documentation for thi
 
 ## Developing
 
-### 1. Plugin Developement and Testing
+### 1. Plugin Development and Testing
 
 #### Code
 - To get started, you'll need JRuby with the Bundler gem installed.
